@@ -1,0 +1,64 @@
+
+
+SENTIMENT ANALYSIS MODEL TRAINING REPORT
+
+
+
+Dataset Split:
+  Training samples: 10404
+  Test samples: 2602
+
+Training Sentiment Distribution:
+sentiment
+positive    5640
+negative    4764
+Name: count, dtype: int64
+
+Text Vectorization:
+  Feature matrix shape: (10404, 5000)
+  Vocabulary size: 5000 unique terms
+
+Model Configuration:
+  Algorithm: LogisticRegression
+  Classes: ['negative', 'positive']
+  Total predictions made: 2602
+
+
+MODEL PERFORMANCE METRICS
+
+
+
+Classification Report:
+              precision    recall  f1-score   support
+
+    negative       0.92      0.91      0.91      1192
+    positive       0.92      0.93      0.93      1410
+
+    accuracy                           0.92      2602
+   macro avg       0.92      0.92      0.92      2602
+weighted avg       0.92      0.92      0.92      2602
+
+Overall Accuracy Score: 0.9224 (92.24%)
+
+Confusion Matrix:
+[[1085  107]
+ [  95 1315]]
+
+Interpretation: [True Negatives, False Positives]
+                [False Negatives, True Positives]
+
+
+Sentiment Distribution Comparison:
+
+
+
+Predicted sentiment distribution:
+positive    1422
+negative    1180
+Name: count, dtype: int64
+
+Actual sentiment distribution:
+sentiment
+positive    1410
+negative    1192
+Name: count, dtype: int64
