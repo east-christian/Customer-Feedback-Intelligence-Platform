@@ -5,6 +5,7 @@ This script trains a machine learning model to predict sentiment (positive/negat
 from customer reviews based on their text content and star ratings.
 
 Author: Christian East; February 22 2026
+Collaborators: Birajman Tamang, Kelsang Yonjan
 Model Type: Logistic Regression with TF-IDF Vectorization
 """
 
