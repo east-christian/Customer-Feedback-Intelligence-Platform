@@ -100,7 +100,7 @@ def main():
     df = pd.read_csv(file)
     
     # Filter out records with missing sentiment labels (e.g., 3-star reviews in binary classification)
-    df_binary = df[df['sentiment'].notna()].copy()
+    df_binary = df[df['sentiment'] != 'neutral'].copy()
 
     # Separate features (review text) and labels (sentiment)
     content = df_binary['clean_text']  # Review text content
@@ -152,6 +152,18 @@ def main():
     # Calculate performance metrics
     accuracy = accuracy_score(sent_predict, sent_test)
     cm = confusion_matrix(sent_test, sent_predict)
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+            xticklabels=model.classes_, 
+            yticklabels=model.classes_)
+    plt.title('Confusion Matrix - Logistic Regression; Binary Classification')
+    plt.ylabel('Actual Sentiment')
+    plt.xlabel('Predicted Sentiment')
+    plt.tight_layout()
+    plt.savefig('../../output/confusion_matrix_binary.png', dpi=300)
+    plt.close()
+    
     
     # Save predictions to CSV with original text and actual sentiment
     predictions_df = pd.DataFrame({

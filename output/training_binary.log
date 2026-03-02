@@ -1,28 +1,27 @@
 
 
-SENTIMENT ANALYSIS MODEL TRAINING REPORT
+Model Training Report
 
 
 
 Dataset Split:
-  Training samples: 11993
-  Test samples: 2999
+  Training samples: 10404
+  Test samples: 2602
 
 Training Sentiment Distribution:
 sentiment
 positive    5640
 negative    4764
-neutral     1589
 Name: count, dtype: int64
 
 Text Vectorization:
-  Feature matrix shape: (11993, 5000)
+  Feature matrix shape: (10404, 5000)
   Vocabulary size: 5000 unique terms
 
 Model Configuration:
   Algorithm: LogisticRegression
-  Classes: ['negative', 'neutral', 'positive']
-  Total predictions made: 2999
+  Classes: ['negative', 'positive']
+  Total predictions made: 2602
 
 
 MODEL PERFORMANCE METRICS
@@ -32,20 +31,18 @@ MODEL PERFORMANCE METRICS
 Classification Report:
               precision    recall  f1-score   support
 
-    negative       0.83      0.92      0.87      1192
-     neutral       0.57      0.11      0.19       397
-    positive       0.81      0.92      0.86      1410
+    negative       0.92      0.91      0.91      1192
+    positive       0.92      0.93      0.93      1410
 
-    accuracy                           0.81      2999
-   macro avg       0.74      0.65      0.64      2999
-weighted avg       0.79      0.81      0.78      2999
+    accuracy                           0.92      2602
+   macro avg       0.92      0.92      0.92      2602
+weighted avg       0.92      0.92      0.92      2602
 
-Overall Accuracy Score: 0.8116 (81.16%)
+Overall Accuracy Score: 0.9224 (92.24%)
 
 Confusion Matrix:
-[[1092   12   88]
- [ 134   45  218]
- [  91   22 1297]]
+[[1085  107]
+ [  95 1315]]
 
 Interpretation: [True Negatives, False Positives]
                 [False Negatives, True Positives]
@@ -56,14 +53,12 @@ Sentiment Distribution Comparison:
 
 
 Predicted sentiment distribution:
-positive    1603
-negative    1317
-neutral       79
+positive    1422
+negative    1180
 Name: count, dtype: int64
 
 Actual sentiment distribution:
 sentiment
 positive    1410
 negative    1192
-neutral      397
 Name: count, dtype: int64

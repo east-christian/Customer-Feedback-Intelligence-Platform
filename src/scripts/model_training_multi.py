@@ -152,6 +152,17 @@ def main():
     # Calculate performance metrics
     accuracy = accuracy_score(sent_predict, sent_test)
     cm = confusion_matrix(sent_test, sent_predict)
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Reds', 
+            xticklabels=model.classes_, 
+            yticklabels=model.classes_)
+    plt.title('Confusion Matrix - Logistic Regression; Multiclass Classification')
+    plt.ylabel('Actual Sentiment')
+    plt.xlabel('Predicted Sentiment')
+    plt.tight_layout()
+    plt.savefig('../../output/confusion_matrix_multi.png', dpi=300)
+    plt.close()
     
     # Save predictions to CSV with original text and actual sentiment
     predictions_df = pd.DataFrame({
