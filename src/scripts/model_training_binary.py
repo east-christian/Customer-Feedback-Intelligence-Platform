@@ -10,6 +10,7 @@ Model Type: Logistic Regression with TF-IDF Vectorization
 """
 
 import sys
+import os
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -21,6 +22,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
 from datetime import datetime
+from pathlib import Path
+
+# Get the absolute path to the project root directory
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+DATA_DIR = PROJECT_ROOT / 'src' / 'sample_data'
+OUTPUT_DIR = PROJECT_ROOT / 'output'
 
 
 # Sentiment classification functions
@@ -68,7 +76,7 @@ def add_sentiment_values_to_file():
     Output: training_testing_data.csv (overwrites original with sentiment labels)
     """
     # Load the cleaned source dataset
-    file = '../sample_data/training_testing_data.csv'
+    file = DATA_DIR / 'training_testing_data.csv'
     df = pd.read_csv(file)
 
     # Extract star ratings for sentiment classification
@@ -81,7 +89,7 @@ def add_sentiment_values_to_file():
     print(df['sentiment'])
     
     # Save the labeled dataset back to the original file
-    df.to_csv('../sample_data/training_testing_data.csv', index=False)
+    df.to_csv(DATA_DIR / 'training_testing_data.csv', index=False)
 
 # Model Training and Evaluation
 
@@ -97,7 +105,7 @@ def main():
     """
     # Step 1: Data Loading
     # Load the sentiment-labeled dataset created by preprocessing
-    file = '../sample_data/training_testing_data.csv'
+    file = DATA_DIR / 'training_testing_data.csv'
     df = pd.read_csv(file)
     
     # Filter out records with missing sentiment labels (e.g., 3-star reviews in binary classification)
@@ -162,7 +170,7 @@ def main():
     plt.ylabel('Actual Sentiment')
     plt.xlabel('Predicted Sentiment')
     plt.tight_layout()
-    plt.savefig('../../output/confusion_matrix_binary.png', dpi=300)
+    plt.savefig(OUTPUT_DIR / 'confusion_matrix_binary.png', dpi=300)
     plt.close()
     
     
@@ -172,7 +180,7 @@ def main():
         'actual_sentiment': sent_test.values,
         'predicted_sentiment': sent_predict
     })
-    predictions_df.to_csv('../../output/predicted_data_binary.csv', index=False)
+    predictions_df.to_csv(OUTPUT_DIR / 'predicted_data_binary.csv', index=False)
     print(f"\nPredictions saved to output/predicted_data_binary.csv")
 
     # Step 6: Results Logging
@@ -180,7 +188,7 @@ def main():
     # Save original stdout to restore it later
     original_stdout = sys.stdout
     
-    with open('../../output/training_binary.log', 'w') as log_file:
+    with open(OUTPUT_DIR / 'training_binary.log', 'w') as log_file:
         sys.stdout = log_file
         
         # Dataset Summary
@@ -243,15 +251,13 @@ if __name__ == "__main__":
     3. Execute model training pipeline
     4. Results are saved to output/training.log
     """
-    import os
-    
     # Verify or create sentiment-labeled dataset
-    if not os.path.exists('../sample_data/training_testing_data.csv'):
+    if not os.path.exists(DATA_DIR / 'training_testing_data.csv'):
         print("Error: training_testing_data.csv not found!")
         sys.exit(1)
     
     # Check if sentiment column exists, if not, add it
-    test_df = pd.read_csv('../sample_data/training_testing_data.csv')
+    test_df = pd.read_csv(DATA_DIR / 'training_testing_data.csv')
     if 'sentiment' not in test_df.columns:
         print("Preprocessing: Generating sentiment-labeled dataset..")
         add_sentiment_values_to_file()
