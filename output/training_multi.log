@@ -1,69 +1,27 @@
 
-
-SENTIMENT ANALYSIS MODEL TRAINING REPORT
-
-
-
-Dataset Split:
-  Training samples: 11993
-  Test samples: 2999
-
-Training Sentiment Distribution:
-sentiment
-positive    5640
-negative    4764
-neutral     1589
-Name: count, dtype: int64
-
-Text Vectorization:
-  Feature matrix shape: (11993, 5000)
-  Vocabulary size: 5000 unique terms
-
-Model Configuration:
-  Algorithm: LogisticRegression
-  Classes: ['negative', 'neutral', 'positive']
-  Total predictions made: 2999
-
-
 MODEL PERFORMANCE METRICS
-
 
 
 Classification Report:
               precision    recall  f1-score   support
 
-    negative       0.84      0.92      0.88      1192
-     neutral       0.51      0.15      0.24       397
-    positive       0.82      0.92      0.87      1410
+    negative       0.82      0.90      0.86      1192
+     neutral       0.41      0.08      0.13       397
+    positive       0.80      0.91      0.85      1410
 
-    accuracy                           0.82      2999
-   macro avg       0.72      0.66      0.66      2999
-weighted avg       0.79      0.82      0.79      2999
+    accuracy                           0.80      2999
+   macro avg       0.68      0.63      0.62      2999
+weighted avg       0.76      0.80      0.76      2999
 
-Overall Accuracy Score: 0.8153 (81.53%)
+Accuracy: 0.7993
+Balanced Accuracy: 0.6326
+Macro F1: 0.6160
+Weighted F1: 0.7610
+Log Loss: 0.5385
 
-Confusion Matrix:
-[[1092   22   78]
- [ 130   61  206]
- [  81   37 1292]]
+Confusion Matrix (multiclass):
+[[1078   16   98]
+ [ 146   32  219]
+ [  92   31 1287]]
 
-Interpretation: [True Negatives, False Positives]
-                [False Negatives, True Positives]
-
-
-Sentiment Distribution Comparison:
-
-
-
-Predicted sentiment distribution:
-positive    1576
-negative    1303
-neutral      120
-Name: count, dtype: int64
-
-Actual sentiment distribution:
-sentiment
-positive    1410
-negative    1192
-neutral      397
-Name: count, dtype: int64
+Rows = actual class, Columns = predicted class.

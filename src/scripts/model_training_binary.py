@@ -163,7 +163,7 @@ def main():
     cm = confusion_matrix(sent_test, sent_predict)
 
     plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+    sns.heatmap(cm, annot=True, fmt='d', cmap='BuPu', 
             xticklabels=model.classes_, 
             yticklabels=model.classes_)
     plt.title('Confusion Matrix - Logistic Regression; Binary Classification')

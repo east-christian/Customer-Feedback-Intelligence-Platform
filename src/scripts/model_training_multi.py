@@ -17,7 +17,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.metrics import (
+    classification_report, confusion_matrix, accuracy_score,
+    balanced_accuracy_score, f1_score, log_loss
+)
+from sklearn.feature_extraction import text as sk_text
 import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
@@ -59,7 +63,7 @@ def sentiments_from_stars(stars, classification_type = 'three_class'):
         if stars >= 4:
             return 'positive'
         elif stars == 3:
-            return 'neutral'
+            return 'neutral/mixed'
         else:
             return 'negative'
 
@@ -126,6 +130,9 @@ def main():
         stratify=sent           # Maintain sentiment distribution across splits
     )
     
+    extra_stop = {'review','user','star','stars','https','http','amp'}
+    stop_words = set(sk_text.ENGLISH_STOP_WORDS) | extra_stop
+
     # Step 3: Text Vectorization (TF-IDF)
     # Convert text into numerical features using TF-IDF (Term Frequency-Inverse Document Frequency)
     # This captures the importance of words relative to their frequency across all reviews
@@ -133,7 +140,8 @@ def main():
         max_features=5000,      # Use top 5,000 most significant terms
         ngram_range=(1, 2),     # Include both individual words and two-word phrases
         min_df=2,               # Exclude rare terms (appearing in fewer than 2 reviews)
-        max_df=0.8              # Exclude common terms (appearing in more than 80% of reviews)
+        max_df=0.8,           # Exclude common terms (appearing in more than 80% of reviews)
+        stop_words=list(stop_words)
     )
 
     # Transform training data and learn vocabulary
@@ -174,7 +182,7 @@ def main():
         
         # Store all sentiment coefficients for reference
         coef_dict = {f'{sent}_coef': feature_coefs[i] 
-                     for i, sent in enumerate(model.classes_)}
+                    for i, sent in enumerate(model.classes_)}
         
         vocab_data.append({
             'Word/Phrase': feature,
@@ -192,13 +200,19 @@ def main():
     # Step 5: Model Evaluation
     # Generate predictions on the test set
     sent_predict = model.predict(content_test_tfidf)
+    sent_proba = model.predict_proba(content_test_tfidf)
+    confidence = sent_proba.max(axis=1)
 
-    # Calculate performance metrics
-    accuracy = accuracy_score(sent_predict, sent_test)
-    cm = confusion_matrix(sent_test, sent_predict)
+    accuracy = accuracy_score(sent_test, sent_predict)
+    balanced_acc = balanced_accuracy_score(sent_test, sent_predict)
+    macro_f1 = f1_score(sent_test, sent_predict, average='macro')
+    weighted_f1 = f1_score(sent_test, sent_predict, average='weighted')
+    multiclass_log_loss = log_loss(sent_test, sent_proba, labels=model.classes_)
+
+    cm = confusion_matrix(sent_test, sent_predict, labels=model.classes_)
 
     plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Reds', 
+    sns.heatmap(cm, annot=True, fmt='d', cmap='RdPu', 
             xticklabels=model.classes_, 
             yticklabels=model.classes_)
     plt.title('Confusion Matrix - Logistic Regression; Multiclass Classification')
@@ -215,10 +229,33 @@ def main():
         # Get top 15 features for this sentiment based on coefficient strength
         sentiment_col = f'{sentiment}_coef'
         top_features = vocab_dataframe.nlargest(15, sentiment_col)
-        
-        # Create horizontal bar chart
-        axes[idx].barh(range(len(top_features)), top_features[sentiment_col], color='red')
-        axes[idx].set_yticks(range(len(top_features)))
+
+        # Determine base color per sentiment and create per-bar colors by ranking
+        base_colors = {
+            'positive': (0.0, 0.6, 0.0),
+            'neutral/mixed': (0.5, 0.5, 0.5),
+            'negative': (0.8, 0.0, 0.0)
+        }
+
+        n = len(top_features)
+        if n == 0:
+            # Nothing to plot for this sentiment
+            axes[idx].set_visible(False)
+            continue
+
+        # Intensities from strongest (1.0) to lightest (0.4) across ranked features
+        intensities = np.linspace(1.0, 0.4, n)
+
+        # Choose base color (fallback to gray if sentiment label unexpected)
+        base = base_colors.get(str(sentiment).lower(), (0.5, 0.5, 0.5))
+        base = np.array(base)
+
+        # Blend each bar color with white to produce lighter shades for lower-ranked features
+        colors = [tuple(1 - inten * (1 - base)) for inten in intensities]
+
+        # Create horizontal bar chart with per-bar colors
+        axes[idx].barh(range(n), top_features[sentiment_col], color=colors)
+        axes[idx].set_yticks(range(n))
         axes[idx].set_yticklabels(top_features['Word/Phrase'], fontsize=9)
         axes[idx].set_xlabel('Coefficient Value', fontsize=10)
         axes[idx].set_title(f'Top Features - {sentiment.capitalize()}', fontsize=12, fontweight='bold')
@@ -234,8 +271,14 @@ def main():
     predictions_df = pd.DataFrame({
         'text': content_test.values,
         'actual_sentiment': sent_test.values,
-        'predicted_sentiment': sent_predict
+        'predicted_sentiment': sent_predict,
+        'confidence': confidence,
+        'correct_prediction': (sent_test.values == sent_predict)
     })
+
+    for i, cls in enumerate(model.classes_):
+        predictions_df[f'prob_{cls}'] = sent_proba[:, i]
+
     predictions_df.to_csv(OUTPUT_DIR / 'predicted_data_multi.csv', index=False)
     print(f"\nPredictions saved to output/predicted_data_multi.csv")
 
@@ -248,49 +291,18 @@ def main():
         sys.stdout = log_file
         
         # Dataset Summary
-        print("\n")
-        print("SENTIMENT ANALYSIS MODEL TRAINING REPORT")
-        print("\n")
-        print(f"\nDataset Split:")
-        print(f"  Training samples: {len(content_train)}")
-        print(f"  Test samples: {len(content_test)}")
-
-        print(f"\nTraining Sentiment Distribution:")
-        print(sent_train.value_counts())
-
-        # Feature Engineering Details
-        print(f"\nText Vectorization:")
-        print(f"  Feature matrix shape: {content_train_tfidf.shape}")
-        print(f"  Vocabulary size: {len(vectorizer.vocabulary_)} unique terms")
-        
-        # Model Information
-        print(f"\nModel Configuration:")
-        print(f"  Algorithm: {type(model).__name__}")
-        print(f"  Classes: {list(model.classes_)}")
-        print(f"  Total predictions made: {len(sent_predict)}")
-        
-        # Performance Metrics
-        print(f"\n")
-        print("MODEL PERFORMANCE METRICS")
-        print(f"\n")
+        print("\nMODEL PERFORMANCE METRICS\n")
         print('\nClassification Report:')
         print(classification_report(sent_test, sent_predict))
+        print(f'Accuracy: {accuracy:.4f}')
+        print(f'Balanced Accuracy: {balanced_acc:.4f}')
+        print(f'Macro F1: {macro_f1:.4f}')
+        print(f'Weighted F1: {weighted_f1:.4f}')
+        print(f'Log Loss: {multiclass_log_loss:.4f}')
 
-        print(f'Overall Accuracy Score: {accuracy:.4f} ({accuracy*100:.2f}%)')
-
-        print(f'\nConfusion Matrix:')
+        print(f'\nConfusion Matrix (multiclass):')
         print(cm)
-        print("\nInterpretation: [True Negatives, False Positives]")
-        print("                [False Negatives, True Positives]")
-
-        # Distribution Analysis
-        print(f"\n")
-        print("Sentiment Distribution Comparison:")
-        print(f"\n")
-        print("\nPredicted sentiment distribution:")
-        print(pd.Series(sent_predict).value_counts())
-        print("\nActual sentiment distribution:")
-        print(sent_test.value_counts())
+        print("\nRows = actual class, Columns = predicted class.")
     
     # Restore original stdout
     sys.stdout = original_stdout
