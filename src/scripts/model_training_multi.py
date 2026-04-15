@@ -11,6 +11,7 @@ Model Type: Logistic Regression with TF-IDF Vectorization
 
 import sys
 import os
+import re
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -36,6 +37,27 @@ OUTPUT_DIR = PROJECT_ROOT / 'output'
 
 
 # Sentiment classification functions
+
+CONTRAST_WORDS = {"but", "however", "though", "although", "yet", "except", "overall", "while"}
+POS_CUES = {"good", "great", "nice", "friendly", "fast", "clean", "love", "excellent", "amazing", "enjoy", "helpful", "professional"}
+NEG_CUES = {"bad", "slow", "rude", "wrong", "dirty", "hate", "awful", "terrible", "issue", "problem"}
+
+def has_contrast(text: str) -> bool:
+    t = f" {str(text).lower()} "
+    return any(f" {w} " in t for w in CONTRAST_WORDS)
+
+def has_dual_polarity_words(text: str) -> bool:
+    tokens = set(re.findall(r"[a-z']+", str(text).lower()))
+    return (len(tokens & POS_CUES) > 0) and (len(tokens & NEG_CUES) > 0)
+
+def mixed_rule(row) -> bool:
+    text = str(row.get("text", ""))
+    p_pos = float(row.get("prob_positive", 0.0))
+    p_neg = float(row.get("prob_negative", 0.0))
+    prob_cond = (p_pos >= 0.30) and (p_neg >= 0.30) and (abs(p_pos - p_neg) <= 0.25)
+    contrast_cond = has_contrast(text)
+    lex_cond = has_dual_polarity_words(text)
+    return (prob_cond and contrast_cond) or (contrast_cond and lex_cond)
 
 def sentiments_from_stars(stars, classification_type = 'three_class'):
     """
@@ -156,7 +178,8 @@ def main():
     model = LogisticRegression(
         max_iter=1000,          # Maximum iterations for model convergence
         random_state=2016,      # Fixed seed for reproducibility
-        C=0.8                  # Regularization strength (lower = stronger regularization)
+        C=0.8,                 # Regularization strength (lower = stronger regularization)
+        class_weight='balanced' # Penalize mistakes on the minority class (neutral/mixed)
     )
     
     # Train the model on vectorized training data
@@ -279,6 +302,12 @@ def main():
     for i, cls in enumerate(model.classes_):
         predictions_df[f'prob_{cls}'] = sent_proba[:, i]
 
+    # Apply mixed rule to the middle class
+    predictions_df["is_mixed"] = False
+    middle_mask = predictions_df["predicted_sentiment"].isin(["neutral", "neutral/mixed"])
+    if middle_mask.any():
+        predictions_df.loc[middle_mask, "is_mixed"] = predictions_df[middle_mask].apply(mixed_rule, axis=1)
+
     predictions_df.to_csv(OUTPUT_DIR / 'predicted_data_multi.csv', index=False)
     print(f"\nPredictions saved to output/predicted_data_multi.csv")
 
@@ -326,7 +355,7 @@ if __name__ == "__main__":
     
     # Check if sentiment column exists, if not, add it
     test_df = pd.read_csv(DATA_DIR / 'training_testing_data.csv')
-    if 'sentiment' not in test_df.columns:
+    if 'sentiment' not in test_df.columns or 'neutral' in test_df['sentiment'].values:
         print("Preprocessing: Generating sentiment-labeled dataset..")
         add_sentiment_values_to_file()
         print("Dataset creation complete..\n")

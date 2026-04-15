@@ -1,0 +1,27 @@
+
+MODEL PERFORMANCE METRICS
+
+
+Classification Report:
+               precision    recall  f1-score   support
+
+     negative       0.81      0.88      0.84      1191
+neutral/mixed       0.88      0.76      0.81      1398
+     positive       0.83      0.88      0.86      1410
+
+     accuracy                           0.84      3999
+    macro avg       0.84      0.84      0.84      3999
+ weighted avg       0.84      0.84      0.84      3999
+
+Accuracy: 0.8372
+Balanced Accuracy: 0.8391
+Macro F1: 0.8366
+Weighted F1: 0.8363
+Log Loss: 0.4551
+
+Confusion Matrix (multiclass):
+[[1045   69   77]
+ [ 161 1056  181]
+ [  83   80 1247]]
+
+Rows = actual class, Columns = predicted class.
