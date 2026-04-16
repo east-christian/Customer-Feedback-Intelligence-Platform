@@ -70,7 +70,7 @@ def sentiments_from_stars(stars, classification_type="three_class"):
     if stars >= 4:
         return "positive"
     if stars == 3:
-        return "neutral"
+        return "neutral/mixed"
     return "negative"
 
 def prepare_training_data():
@@ -151,6 +151,27 @@ def preprocess_reviews(df):
         raise ValueError("Uploaded CSV must contain a 'text', 'raw_text', or 'clean_text' column")
     return df
 
+CONTRAST_WORDS = {"but", "however", "though", "although", "yet", "except", "overall", "while"}
+POS_CUES = {"good", "great", "nice", "friendly", "fast", "clean", "love", "excellent", "amazing", "enjoy"}
+NEG_CUES = {"bad", "slow", "rude", "wrong", "dirty", "hate", "awful", "terrible", "issue", "problem"}
+
+def has_contrast(text: str) -> bool:
+    t = f" {text.lower()} "
+    return any(f" {w} " in t for w in CONTRAST_WORDS)
+
+def has_dual_polarity_words(text: str) -> bool:
+    tokens = set(re.findall(r"[a-z']+", text.lower()))
+    return (len(tokens & POS_CUES) > 0) and (len(tokens & NEG_CUES) > 0)
+
+def mixed_rule(row) -> bool:
+    text = str(row.get("clean_text", ""))
+    p_pos = float(row.get("prob_positive", 0.0))
+    p_neg = float(row.get("prob_negative", 0.0))
+    prob_cond = (p_pos >= 0.30) and (p_neg >= 0.30) and (abs(p_pos - p_neg) <= 0.25)
+    contrast_cond = has_contrast(text)
+    lex_cond = has_dual_polarity_words(text)
+    return (prob_cond and contrast_cond) or (contrast_cond and lex_cond)
+
 def predict_reviews(df, model, vectorizer):
     tfidf = vectorizer.transform(df["clean_text"])
     preds = model.predict(tfidf)
@@ -160,6 +181,12 @@ def predict_reviews(df, model, vectorizer):
     df["confidence"] = probs.max(axis=1)
     for idx, cls in enumerate(model.classes_):
         df[f"prob_{cls}"] = probs[:, idx]
+        
+    df["is_mixed"] = False
+    middle_mask = df["predicted_sentiment"].isin(["neutral", "neutral/mixed"])
+    if middle_mask.any():
+        df.loc[middle_mask, "is_mixed"] = df[middle_mask].apply(mixed_rule, axis=1)
+        
     return df
 
 def build_prompt(batch, themes):
@@ -291,7 +318,7 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
 
     return batch_idx, batch, None, "failed"
 
-def extract_themes(df, themes_list, batch_size=5, max_workers=2):
+def extract_themes(df, themes_list, batch_size=30, max_workers=2):
     """
     Extract themes for the reviews in the DataFrame using the LLM.
     """
@@ -369,7 +396,7 @@ def extract_themes(df, themes_list, batch_size=5, max_workers=2):
 
 def render_dashboard(df):
     st.subheader("Prediction Summary")
-    st.write(df[["predicted_sentiment", "confidence", "themes"]].head(10))
+    st.write(df[["predicted_sentiment", "confidence", "is_mixed", "themes"]].head(10))
 
     sentiment_counts = df["predicted_sentiment"].value_counts().reset_index()
     sentiment_counts.columns = ["sentiment", "count"]
@@ -379,7 +406,7 @@ def render_dashboard(df):
         values="count",
         title="Predicted Sentiment Distribution",
         color="sentiment",
-        color_discrete_map={"positive": "green", "neutral": "gray", "negative": "red"}
+        color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -387,19 +414,21 @@ def render_dashboard(df):
         try:
             df["date"] = pd.to_datetime(df["date"])
             time_df = (
-                df.groupby([pd.Grouper(key="date", freq="M"), "predicted_sentiment"])
+                df.groupby([pd.Grouper(key="date", freq="ME"), "predicted_sentiment"])
                 .size()
                 .reset_index(name="count")
             )
-            fig = px.line(
-                time_df,
-                x="date",
-                y="count",
-                color="predicted_sentiment",
-                title="Sentiment Over Time",
-                color_discrete_map={"positive": "green", "neutral": "gray", "negative": "red"}
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            # Only plot if we have enough date variance
+            if len(time_df) > 1:
+                fig = px.line(
+                    time_df,
+                    x="date",
+                    y="count",
+                    color="predicted_sentiment",
+                    title="Overall Sentiment Over Time (Monthly)",
+                    color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
+                )
+                st.plotly_chart(fig, use_container_width=True)
         except Exception:
             st.info("Date column found but could not be parsed as datetime.")
 
@@ -463,7 +492,7 @@ def render_dashboard(df):
                 values="count", 
                 title=f"Sentiment Distribution for '{selected_theme}'",
                 color="sentiment", 
-                color_discrete_map={"positive": "green", "neutral": "gray", "negative": "red"}
+                color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
             )
             st.plotly_chart(fig_dist, use_container_width=True)
             
@@ -472,7 +501,7 @@ def render_dashboard(df):
             pivot_df = pd.crosstab(df_exploded['Theme'], df_exploded['predicted_sentiment'], margins=True, margins_name="Total")
             
             # Calculate percentages for whatever sentiment classes exist natively
-            cols_to_percent = [col for col in ["positive", "negative", "neutral"] if col in pivot_df.columns]
+            cols_to_percent = [col for col in ["positive", "negative", "neutral", "neutral/mixed"] if col in pivot_df.columns]
             for col in cols_to_percent:
                 pivot_df[col + " (%)"] = (pivot_df[col] / pivot_df["Total"] * 100).round(1)
             
@@ -485,7 +514,74 @@ def render_dashboard(df):
             
             st.dataframe(pivot_df[ordered_cols], use_container_width=True)
 
-            # --- 3. Deep Dive: Review Verbatims and Subtopics ---
+            # --- 3. Time-Based Trends & Emergent Themes ---
+            if "date" in df.columns:
+                st.markdown("---")
+                st.subheader("Time-Based & Emergent Trends")
+                st.write("Understand which topics are gaining or losing momentum.")
+                
+                try:
+                    # Group by month and Theme to get count frequencies
+                    theme_time = (
+                        df_exploded.groupby([pd.Grouper(key="date", freq="ME"), "Theme"])
+                        .size()
+                        .reset_index(name="count")
+                    )
+                    
+                    # Ensure there are at least two separate months to compare
+                    if len(theme_time['date'].unique()) > 1:
+                        col_tr1, col_tr2 = st.columns([1, 1])
+                        
+                        with col_tr1:
+                            # 3a. Plotly Time Series for the globally selected Theme
+                            st.markdown(f"**Monthly Volume Trend for '{selected_theme}'**")
+                            sel_theme_time = theme_time[theme_time["Theme"] == selected_theme]
+                            
+                            fig_trend = px.bar(
+                                sel_theme_time,
+                                x="date",
+                                y="count",
+                                title=f"Review mentions of '{selected_theme}' alone",
+                                labels={"date": "Month", "count": "Mentions"}
+                            )
+                            st.plotly_chart(fig_trend, use_container_width=True)
+                            
+                        with col_tr2:
+                            # 3b. Emergent Themes Matrix (Month-over-month absolute growth)
+                            st.markdown("**Emergent Themes (Most Recent Month)**")
+                            
+                            months = sorted(theme_time['date'].unique())
+                            curr_month = months[-1]
+                            prev_month = months[-2]
+                            
+                            curr_df = theme_time[theme_time['date'] == curr_month].set_index("Theme")
+                            prev_df = theme_time[theme_time['date'] == prev_month].set_index("Theme")
+                            
+                            # Join them side-by-side to calculate momentum delta
+                            emergent_df = curr_df[['count']].join(
+                                prev_df[['count']], 
+                                lsuffix='_curr', 
+                                rsuffix='_prev', 
+                                how='outer'
+                            ).fillna(0)
+                            
+                            emergent_df['Change'] = emergent_df['count_curr'] - emergent_df['count_prev']
+                            
+                            # Determine themes with positive momentum
+                            rising_themes = emergent_df.sort_values(by='Change', ascending=False)
+                            
+                            st.write(f"Change in conversational volume between **{prev_month.strftime('%b %Y')}** and **{curr_month.strftime('%b %Y')}**:")
+                            st.dataframe(
+                                rising_themes[['count_prev', 'count_curr', 'Change']]
+                                .rename(columns={'count_prev': 'Prev. Mentions', 'count_curr': 'Current Mentions', 'Change': 'Momentum'}),
+                                use_container_width=True
+                            )
+                    else:
+                        st.info("The dataset spans less than a full month. Trend momentum cannot be established.")
+                except Exception as e:
+                    st.warning(f"Could not calculate emergent theme trends: {e}")
+
+            # --- 4. Deep Dive: Review Verbatims and Subtopics ---
             st.markdown("---")
             st.subheader("Deep Dive: What are customers actually saying?")
             st.write("Understand the specific subtopics and read actual reviews driving the sentiment for a theme.")
@@ -494,7 +590,7 @@ def render_dashboard(df):
             with col_dd1:
                 dd_theme = st.selectbox("Select Theme for Deep Dive:", unique_themes, key="dd_theme")
             with col_dd2:
-                dd_sentiment = st.selectbox("Select Sentiment:", ["negative", "positive", "neutral"], key="dd_sentiment")
+                dd_sentiment = st.selectbox("Select Sentiment:", ["negative", "positive", "neutral", "neutral/mixed"], key="dd_sentiment")
                 
             dd_data = df_exploded[(df_exploded['Theme'] == dd_theme) & (df_exploded['predicted_sentiment'] == dd_sentiment)]
             
@@ -525,9 +621,16 @@ def render_dashboard(df):
                             feature_names = tv.get_feature_names_out()
                             
                             # Extract the top 10 most distinctive phrases for this specific theme
-                            theme_scores = tfidf_matrix[theme_idx].toarray()[0]
-                            top_indices = theme_scores.argsort()[-10:][::-1]
-                            top_phrases = [feature_names[i] for i in top_indices if theme_scores[i] > 0]
+                            tfidf_dense = tfidf_matrix.toarray()
+                            theme_scores = tfidf_dense[theme_idx]
+                            
+                            # EXCLUSIVE FILTER: Only keep phrases where THIS theme possesses the absolute highest TF-IDF score
+                            # This strictly prevents phrases in multi-tagged reviews from bleeding into unrelated themes
+                            is_primary_theme = (tfidf_dense.argmax(axis=0) == theme_idx)
+                            exclusive_scores = theme_scores * is_primary_theme
+                            
+                            top_indices = exclusive_scores.argsort()[-10:][::-1]
+                            top_phrases = [feature_names[i] for i in top_indices if exclusive_scores[i] > 0]
                             
                             # Count their actual mentions within the selected theme's reviews (for display purposes)
                             phrase_counts = []
@@ -538,7 +641,7 @@ def render_dashboard(df):
                             phrase_df = pd.DataFrame({"Phrase": top_phrases, "Count": phrase_counts})
                             phrase_df = phrase_df.sort_values(by="Count", ascending=True)
                             
-                            color_map = {"positive": "green", "neutral": "gray", "negative": "red"}
+                            color_map = {"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
                             fig_phrases = px.bar(
                                 phrase_df, 
                                 x="Count", 
