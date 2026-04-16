@@ -40,7 +40,7 @@ THEMES = [
 
 st.set_page_config(page_title="Sentiment Analysis Dashboard", layout="wide")
 
-def call_llm(prompt, model="gemma2:9b"):
+def call_llm(prompt, model="gemma3:4b"):
     """
     Call the Ollama LLM with the given prompt and model.
     """
