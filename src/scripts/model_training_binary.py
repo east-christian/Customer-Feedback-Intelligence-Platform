@@ -5,6 +5,7 @@ This script trains a machine learning model to predict sentiment (positive/negat
 from customer reviews based on their text content and star ratings.
 
 Author: Christian East; February 22 2026
+Collaborators: Birajman Tamang, Kelsang Yonjan
 Model Type: Logistic Regression with TF-IDF Vectorization
 """
 
@@ -162,7 +163,7 @@ def main():
     cm = confusion_matrix(sent_test, sent_predict)
 
     plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+    sns.heatmap(cm, annot=True, fmt='d', cmap='BuPu', 
             xticklabels=model.classes_, 
             yticklabels=model.classes_)
     plt.title('Confusion Matrix - Logistic Regression; Binary Classification')

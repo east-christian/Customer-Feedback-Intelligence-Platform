@@ -132,7 +132,7 @@ def extract_themes_with_retry(batch_info):
                 time.sleep(2)
 
     # all retries failed
-    print(f"  ❌ Batch {batch_idx} permanently failed after {MAX_RETRIES} attempts")
+    print(f" Batch {batch_idx} permanently failed after {MAX_RETRIES} attempts")
     return batch_idx, batch, None, "failed"
 
 
@@ -163,9 +163,9 @@ def main():
         print(f"Update REVIEW_COLUMN in config to match your CSV.")
         return
 
-    print(f"✓ Reviews loaded:    {len(df)}")
-    print(f"✓ Reading column:    {REVIEW_COLUMN}")
-    print(f"✓ Columns in CSV:    {list(df.columns)}")
+    print(f" Reviews loaded:    {len(df)}")
+    print(f" Reading column:    {REVIEW_COLUMN}")
+    print(f" Columns in CSV:    {list(df.columns)}")
 
     reviews = df[REVIEW_COLUMN].fillna("").tolist()
 
@@ -180,17 +180,17 @@ def main():
     if os.path.exists(PROGRESS_FILE):
         progress_df  = pd.read_csv(PROGRESS_FILE)
         already_done = len(progress_df)
-        print(f"\n✓ Resuming from review {already_done}")
+        print(f"\n Resuming from review {already_done}")
     else:
-        print(f"\n✓ Starting fresh")
+        print(f"\n Starting fresh")
 
     reviews_remaining = reviews[already_done:]
 
     if len(reviews_remaining) == 0:
-        print("\n✅ All reviews already processed!")
+        print("\n All reviews already processed!")
         return
 
-    print(f"✓ Reviews remaining: {len(reviews_remaining)}")
+    print(f"Reviews remaining: {len(reviews_remaining)}")
 
     # Step 3: Create batches
     batches = []
@@ -198,10 +198,10 @@ def main():
         batch = reviews_remaining[i:i + BATCH_SIZE]
         batches.append((already_done + i, batch))
 
-    print(f"\n✓ Batch size:        {BATCH_SIZE} reviews per batch")
-    print(f"✓ Total batches:     {len(batches)}")
-    print(f"✓ Parallel workers:  {MAX_WORKERS}")
-    print(f"✓ Retries per batch: {MAX_RETRIES}")
+    print(f"\n Batch size:        {BATCH_SIZE} reviews per batch")
+    print(f" Total batches:     {len(batches)}")
+    print(f" Parallel workers:  {MAX_WORKERS}")
+    print(f" Retries per batch: {MAX_RETRIES}")
     print(f"\n Starting extraction...\n")
 
     # Step 4: Run parallel processing
@@ -266,7 +266,7 @@ def main():
     print("\n" + "=" * 55)
 
     df.to_csv(OUTPUT_FILE, index=False)
-    print(f"✅ Output saved to:   {OUTPUT_FILE}")
+    print(f" Output saved to:   {OUTPUT_FILE}")
     print(f"   Total rows:       {len(df)}")
     print(f"   Output columns:   {list(df.columns)}")
 
@@ -274,15 +274,15 @@ def main():
         # save failed reviews separately for later retry
         failed_df = df[df["themes"] == "FAILED"].copy()
         failed_df.to_csv(FAILED_FILE, index=False)
-        print(f"\n⚠️  Failed reviews:   {len(failed_df)}")
+        print(f"\n  Failed reviews:   {len(failed_df)}")
         print(f"   Saved to:        {FAILED_FILE}")
     else:
-        print("\n✅ No failures — all reviews processed successfully!")
+        print("\n No failures — all reviews processed successfully!")
 
     # clean up checkpoint file now that everything is complete
     if os.path.exists(PROGRESS_FILE):
         os.remove(PROGRESS_FILE)
-        print("✓ Progress file cleaned up")
+        print(" Progress file cleaned up")
 
     print("=" * 55)
 
