@@ -604,6 +604,45 @@ METRIC_CSS = """
 """
 
 
+def _chart_download(fig, filename, label="Download chart as PNG"):
+    """Render a download button that saves the given Plotly figure as a PNG."""
+    try:
+        png_bytes = fig.to_image(format="png", scale=2)
+        st.download_button(
+            label=label,
+            data=png_bytes,
+            file_name=filename,
+            mime="image/png",
+        )
+    except Exception:
+        st.caption("Install kaleido to enable chart downloads: pip install kaleido")
+
+
+def _pdf_download_button(df, key_suffix=""):
+    """Render the full PDF report download button."""
+    st.markdown("---")
+    st.markdown("**Download full report**")
+    custom_title = st.text_input(
+        "Report title",
+        value="Feedback Intelligence Report",
+        key=f"report_title_{key_suffix}",
+    )
+    if st.button("Generate PDF Report", key=f"gen_pdf_{key_suffix}"):
+        with st.spinner("Building PDF report..."):
+            try:
+                pdf_bytes = generate_pdf_report(df, report_title=custom_title)
+                st.download_button(
+                    label="Download PDF Report",
+                    data=pdf_bytes,
+                    file_name=f"feedback_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    key=f"dl_pdf_{key_suffix}",
+                )
+            except Exception as e:
+                st.error(f"PDF generation failed: {e}")
+                st.info("Run: pip install kaleido")
+
+
 def page_overview(df):
     # Inject metric card CSS so all cards sit at equal height
     st.markdown(METRIC_CSS, unsafe_allow_html=True)
@@ -616,11 +655,11 @@ def page_overview(df):
 
     # KPI cards — all deltas use the same label format so height is consistent
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total Reviews",      f"{total:,}",                    "100% of reviews")
-    c2.metric("✅ Positive",         f"{pos:,}",                      f"{pos/total*100:.1f}% of reviews")
-    c3.metric("❌ Negative",         f"{neg:,}",                      f"{neg/total*100:.1f}% of reviews")
-    c4.metric("🔀 Neutral / Mixed",  f"{mixed:,}",                    f"{mixed/total*100:.1f}% of reviews")
-    c5.metric("🎯 Avg Confidence",   f"{avg_conf*100:.1f}%" if avg_conf else "N/A", "model certainty")
+    c1.metric("Total Reviews",     f"{total:,}",                    "100% of reviews")
+    c2.metric("Positive",          f"{pos:,}",                      f"{pos/total*100:.1f}% of reviews")
+    c3.metric("Negative",          f"{neg:,}",                      f"{neg/total*100:.1f}% of reviews")
+    c4.metric("Neutral / Mixed",   f"{mixed:,}",                    f"{mixed/total*100:.1f}% of reviews")
+    c5.metric("Avg Confidence",    f"{avg_conf*100:.1f}%" if avg_conf else "N/A", "model certainty")
 
     st.markdown("---")
     col_a, col_b = st.columns(2)
@@ -628,22 +667,25 @@ def page_overview(df):
     with col_a:
         counts = df["predicted_sentiment"].value_counts().reset_index()
         counts.columns = ["sentiment", "count"]
-        fig = px.pie(counts, names="sentiment", values="count",
-                     title="Predicted Sentiment Distribution",
-                     color="sentiment", color_discrete_map=COLOUR_MAP)
-        st.plotly_chart(fig, use_container_width=True)
+        fig_pie = px.pie(counts, names="sentiment", values="count",
+                         title="Predicted Sentiment Distribution",
+                         color="sentiment", color_discrete_map=COLOUR_MAP)
+        st.plotly_chart(fig_pie, use_container_width=True)
+        _chart_download(fig_pie, "sentiment_distribution.png", "Download sentiment pie chart")
 
     with col_b:
+        fig_trend = None
         if "date" in df.columns:
             try:
                 df["date"] = pd.to_datetime(df["date"])
                 td = df.groupby([pd.Grouper(key="date", freq="ME"), "predicted_sentiment"])\
                        .size().reset_index(name="count")
                 if len(td) > 1:
-                    fig2 = px.line(td, x="date", y="count", color="predicted_sentiment",
-                                   title="Sentiment Over Time (Monthly)",
-                                   color_discrete_map=COLOUR_MAP)
-                    st.plotly_chart(fig2, use_container_width=True)
+                    fig_trend = px.line(td, x="date", y="count", color="predicted_sentiment",
+                                        title="Sentiment Over Time (Monthly)",
+                                        color_discrete_map=COLOUR_MAP)
+                    st.plotly_chart(fig_trend, use_container_width=True)
+                    _chart_download(fig_trend, "sentiment_trend.png", "Download trend chart")
                 else:
                     st.info("Not enough date range for a trend chart.")
             except Exception:
@@ -657,12 +699,7 @@ def page_overview(df):
                     if c in df.columns]
     st.dataframe(df[preview_cols].head(10), use_container_width=True)
 
-    st.download_button(
-        label="⬇ Download full analysed CSV",
-        data=df.to_csv(index=False),
-        file_name="analysis_results.csv",
-        mime="text/csv",
-    )
+    _pdf_download_button(df, key_suffix="overview")
 
 
 def page_positive(df):
@@ -673,17 +710,26 @@ def page_positive(df):
         return
 
     if "confidence" in pos_df.columns:
-        fig = px.histogram(pos_df, x="confidence", nbins=10,
-                           title="Confidence Score Distribution — Positive Reviews",
-                           color_discrete_sequence=["#16a34a"])
-        fig.update_traces(marker_line_color="white", marker_line_width=2)
-        fig.update_layout(
+        fig_hist = px.histogram(pos_df, x="confidence",
+                                title="Confidence Score Distribution — Positive Reviews",
+                                color_discrete_sequence=["#16a34a"])
+        fig_hist.update_traces(
+            marker_line_color="white", marker_line_width=2,
+            xbins=dict(start=0.0, end=1.0, size=0.10),
+        )
+        fig_hist.update_layout(
             bargap=0.15,
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
-            xaxis=dict(tickformat=".0%"),
+            xaxis=dict(
+                tickformat=".0%",
+                range=[0, 1],
+                tickvals=[i/10 for i in range(0, 11)],
+            ),
+            yaxis=dict(rangemode="tozero", dtick=1, tickformat="d"),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig_hist, use_container_width=True)
+        _chart_download(fig_hist, "positive_confidence.png", "Download confidence chart")
 
     if "themes" in pos_df.columns:
         st.markdown("**Most mentioned themes in positive reviews**")
@@ -691,24 +737,27 @@ def page_positive(df):
         exp = exp[~exp.isin(["FAILED", "", "NOT PROCESSED"])]
         tc  = exp.value_counts().head(8).reset_index()
         tc.columns = ["Theme", "Count"]
-        fig2 = px.bar(tc, x="Count", y="Theme", orientation="h",
-                      color_discrete_sequence=["#16a34a"])
-        fig2.update_traces(marker_line_color="white", marker_line_width=1)
-        fig2.update_layout(
+        fig_bar = px.bar(tc, x="Count", y="Theme", orientation="h",
+                         color_discrete_sequence=["#16a34a"])
+        fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
+        fig_bar.update_layout(
             bargap=0.2,
             yaxis=dict(categoryorder="total ascending"),
             xaxis_title="Number of reviews mentioning this theme",
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig_bar, use_container_width=True)
+        _chart_download(fig_bar, "positive_themes.png", "Download themes chart")
 
     st.markdown("**Sample positive reviews**")
     tc_name = _text_col(pos_df)
     hc, bc  = st.columns([3, 1])
     with bc:
-        st.button("🔄 Refresh", key="pos_refresh")
+        st.button("Refresh", key="pos_refresh")
     for _, row in pos_df.sample(min(10, len(pos_df))).iterrows():
         conf = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
         st.success(f'"{row[tc_name]}"{conf}')
+
+    _pdf_download_button(df, key_suffix="positive")
 
 
 def page_negative(df):
@@ -719,17 +768,26 @@ def page_negative(df):
         return
 
     if "confidence" in neg_df.columns:
-        fig = px.histogram(neg_df, x="confidence", nbins=10,
-                           title="Confidence Score Distribution — Negative Reviews",
-                           color_discrete_sequence=["#dc2626"])
-        fig.update_traces(marker_line_color="white", marker_line_width=2)
-        fig.update_layout(
+        fig_hist = px.histogram(neg_df, x="confidence",
+                                title="Confidence Score Distribution — Negative Reviews",
+                                color_discrete_sequence=["#dc2626"])
+        fig_hist.update_traces(
+            marker_line_color="white", marker_line_width=2,
+            xbins=dict(start=0.0, end=1.0, size=0.10),
+        )
+        fig_hist.update_layout(
             bargap=0.15,
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
-            xaxis=dict(tickformat=".0%"),
+            xaxis=dict(
+                tickformat=".0%",
+                range=[0, 1],
+                tickvals=[i/10 for i in range(0, 11)],
+            ),
+            yaxis=dict(rangemode="tozero", dtick=1, tickformat="d"),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig_hist, use_container_width=True)
+        _chart_download(fig_hist, "negative_confidence.png", "Download confidence chart")
 
     if "themes" in neg_df.columns:
         st.markdown("**Most mentioned themes in negative reviews**")
@@ -737,24 +795,102 @@ def page_negative(df):
         exp = exp[~exp.isin(["FAILED", "", "NOT PROCESSED"])]
         tc  = exp.value_counts().head(8).reset_index()
         tc.columns = ["Theme", "Count"]
-        fig2 = px.bar(tc, x="Count", y="Theme", orientation="h",
-                      color_discrete_sequence=["#dc2626"])
-        fig2.update_traces(marker_line_color="white", marker_line_width=1)
-        fig2.update_layout(
+        fig_bar = px.bar(tc, x="Count", y="Theme", orientation="h",
+                         color_discrete_sequence=["#dc2626"])
+        fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
+        fig_bar.update_layout(
             bargap=0.2,
             yaxis=dict(categoryorder="total ascending"),
             xaxis_title="Number of reviews mentioning this theme",
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig_bar, use_container_width=True)
+        _chart_download(fig_bar, "negative_themes.png", "Download themes chart")
 
     st.markdown("**Sample negative reviews**")
     tc_name = _text_col(neg_df)
     hc, bc  = st.columns([3, 1])
     with bc:
-        st.button("🔄 Refresh", key="neg_refresh")
+        st.button("Refresh", key="neg_refresh")
     for _, row in neg_df.sample(min(10, len(neg_df))).iterrows():
         conf = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
         st.error(f'"{row[tc_name]}"{conf}')
+
+    _pdf_download_button(df, key_suffix="negative")
+
+
+def page_neutral(df):
+    neu_df = df[df["predicted_sentiment"].isin(["neutral", "neutral/mixed"])].copy()
+    st.markdown(f"### Neutral / Mixed Reviews — {len(neu_df):,} total")
+    st.write(
+        "These reviews sit in the middle — the model did not detect a clearly positive "
+        "or negative tone. Some may be genuinely balanced, others may be vague or ambiguous."
+    )
+    if neu_df.empty:
+        st.info("No neutral or mixed reviews found in this dataset.")
+        return
+
+    if "confidence" in neu_df.columns:
+        fig_hist = px.histogram(neu_df, x="confidence",
+                                title="Confidence Score Distribution — Neutral / Mixed Reviews",
+                                color_discrete_sequence=["#6b7280"])
+        fig_hist.update_traces(
+            marker_line_color="white", marker_line_width=2,
+            xbins=dict(start=0.0, end=1.0, size=0.10),
+        )
+        fig_hist.update_layout(
+            bargap=0.15,
+            xaxis_title="Model Confidence Score (higher = more certain it is neutral)",
+            yaxis_title="Number of Reviews",
+            xaxis=dict(
+                tickformat=".0%",
+                range=[0, 1],
+                tickvals=[i/10 for i in range(0, 11)],
+            ),
+            yaxis=dict(rangemode="tozero", dtick=1, tickformat="d"),
+        )
+        st.plotly_chart(fig_hist, use_container_width=True)
+        _chart_download(fig_hist, "neutral_confidence.png", "Download confidence chart")
+
+    # Split into neutral vs mixed if is_mixed column exists
+    if "is_mixed" in neu_df.columns:
+        truly_neutral = neu_df[neu_df["is_mixed"] == False]
+        mixed_signal  = neu_df[neu_df["is_mixed"] == True]
+        col_a, col_b  = st.columns(2)
+        with col_a:
+            st.metric("Purely Neutral", f"{len(truly_neutral):,}",
+                      "No strong positive or negative language")
+        with col_b:
+            st.metric("Mixed Signal", f"{len(mixed_signal):,}",
+                      "Contains both positive and negative language")
+
+    if "themes" in neu_df.columns:
+        st.markdown("**Most mentioned themes in neutral / mixed reviews**")
+        exp = neu_df["themes"].str.split(r",\s*").explode().str.strip()
+        exp = exp[~exp.isin(["FAILED", "", "NOT PROCESSED"])]
+        tc  = exp.value_counts().head(8).reset_index()
+        tc.columns = ["Theme", "Count"]
+        fig_bar = px.bar(tc, x="Count", y="Theme", orientation="h",
+                         color_discrete_sequence=["#6b7280"])
+        fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
+        fig_bar.update_layout(
+            bargap=0.2,
+            yaxis=dict(categoryorder="total ascending"),
+            xaxis_title="Number of reviews mentioning this theme",
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
+        _chart_download(fig_bar, "neutral_themes.png", "Download themes chart")
+
+    st.markdown("**Sample neutral / mixed reviews**")
+    tc_name = _text_col(neu_df)
+    hc, bc  = st.columns([3, 1])
+    with bc:
+        st.button("Refresh", key="neu_refresh")
+    for _, row in neu_df.sample(min(10, len(neu_df))).iterrows():
+        conf  = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
+        label = "Mixed" if ("is_mixed" in row and row["is_mixed"]) else "Neutral"
+        st.warning(f'**[{label}]** "{row[tc_name]}"{conf}')
+
+    _pdf_download_button(df, key_suffix="neutral")
 
 
 def page_themes(df):
@@ -771,15 +907,16 @@ def page_themes(df):
     with col1:
         st.dataframe(theme_counts, use_container_width=True)
     with col2:
-        fig = px.bar(theme_counts, x="Count", y="Theme", orientation="h",
-                     title="Most Common Themes", color="Count",
-                     color_continuous_scale="Viridis")
-        fig.update_traces(marker_line_color="white", marker_line_width=1)
-        fig.update_layout(
+        fig_theme_bar = px.bar(theme_counts, x="Count", y="Theme", orientation="h",
+                               title="Most Common Themes", color="Count",
+                               color_continuous_scale="Viridis")
+        fig_theme_bar.update_traces(marker_line_color="white", marker_line_width=1)
+        fig_theme_bar.update_layout(
             bargap=0.2,
             yaxis=dict(categoryorder="total ascending"),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig_theme_bar, use_container_width=True)
+        _chart_download(fig_theme_bar, "top_themes.png", "Download themes chart")
 
     st.markdown("---")
     st.markdown("**Sentiment Breakdown by Theme**")
@@ -806,10 +943,12 @@ def page_themes(df):
         t_data        = df_exp[df_exp["Theme"] == selected]
         t_counts      = t_data["predicted_sentiment"].value_counts().reset_index()
         t_counts.columns = ["sentiment", "count"]
-        fig2 = px.pie(t_counts, names="sentiment", values="count",
-                      title=f"Sentiment split for '{selected}'",
-                      color="sentiment", color_discrete_map=COLOUR_MAP)
-        st.plotly_chart(fig2, use_container_width=True)
+        fig_pie = px.pie(t_counts, names="sentiment", values="count",
+                         title=f"Sentiment split for '{selected}'",
+                         color="sentiment", color_discrete_map=COLOUR_MAP)
+        st.plotly_chart(fig_pie, use_container_width=True)
+        _chart_download(fig_pie, f"theme_{selected.replace(' ','_')}_sentiment.png",
+                        "Download theme sentiment chart")
 
         # Top phrases
         st.markdown(f"**Top phrases in '{selected}'**")
@@ -850,33 +989,45 @@ def page_themes(df):
                     .size().reset_index(name="count")
                 )
                 if len(theme_time["date"].unique()) > 1:
-                    col_tr1, col_tr2 = st.columns(2)
-                    with col_tr1:
-                        st.markdown(f"**Monthly volume for '{selected}'**")
-                        sel_tt = theme_time[theme_time["Theme"] == selected]
-                        fig_t  = px.bar(sel_tt, x="date", y="count",
-                                        labels={"date":"Month","count":"Mentions"})
-                        fig_t.update_traces(marker_line_color="white", marker_line_width=1)
-                        fig_t.update_layout(bargap=0.2)
-                        st.plotly_chart(fig_t, use_container_width=True)
-                    with col_tr2:
-                        st.markdown("**Emergent Themes (month-over-month)**")
-                        months     = sorted(theme_time["date"].unique())
-                        curr_month = months[-1]
-                        prev_month = months[-2]
-                        curr_df = theme_time[theme_time["date"]==curr_month].set_index("Theme")
-                        prev_df = theme_time[theme_time["date"]==prev_month].set_index("Theme")
-                        emer = curr_df[["count"]].join(prev_df[["count"]],
-                                                        lsuffix="_curr", rsuffix="_prev",
-                                                        how="outer").fillna(0)
-                        emer["Change"] = emer["count_curr"] - emer["count_prev"]
-                        st.dataframe(
-                            emer.sort_values("Change", ascending=False)
-                            [["count_prev","count_curr","Change"]]
-                            .rename(columns={"count_prev":"Prev Month",
-                                             "count_curr":"Current Month",
-                                             "Change":"Momentum"}),
-                            use_container_width=True)
+                    st.markdown(f"**Monthly volume for '{selected}'**")
+                    sel_tt = theme_time[theme_time["Theme"] == selected]
+                    fig_t  = px.bar(sel_tt, x="date", y="count",
+                                    labels={"date": "Month", "count": "Mentions"})
+                    fig_t.update_traces(marker_line_color="white", marker_line_width=1)
+                    fig_t.update_layout(
+                        bargap=0.2,
+                        xaxis=dict(
+                            tickformat="%b %Y",
+                            tickmode="array",
+                            tickvals=sel_tt["date"].tolist(),
+                            tickangle=-45,
+                        ),
+                        yaxis=dict(
+                            rangemode="tozero",
+                            dtick=1,
+                            tickformat="d",
+                        ),
+                    )
+                    st.plotly_chart(fig_t, use_container_width=True)
+
+                    st.markdown("**Emergent Themes (month-over-month)**")
+                    st.write("Change in mention volume between the two most recent months.")
+                    months     = sorted(theme_time["date"].unique())
+                    curr_month = months[-1]
+                    prev_month = months[-2]
+                    curr_df = theme_time[theme_time["date"]==curr_month].set_index("Theme")
+                    prev_df = theme_time[theme_time["date"]==prev_month].set_index("Theme")
+                    emer = curr_df[["count"]].join(prev_df[["count"]],
+                                                    lsuffix="_curr", rsuffix="_prev",
+                                                    how="outer").fillna(0)
+                    emer["Change"] = emer["count_curr"] - emer["count_prev"]
+                    st.dataframe(
+                        emer.sort_values("Change", ascending=False)
+                        [["count_prev","count_curr","Change"]]
+                        .rename(columns={"count_prev":"Prev Month",
+                                         "count_curr":"Current Month",
+                                         "Change":"Momentum"}),
+                        use_container_width=True)
                 else:
                     st.info("Need at least 2 months of data for trend momentum.")
             except Exception as e:
@@ -896,10 +1047,12 @@ def page_themes(df):
         else:
             hc, bc = st.columns([3, 1])
             with bc:
-                st.button("🔄 Refresh", key="dd_refresh")
+                st.button("Refresh", key="dd_refresh")
             tc_name = _text_col(dd_data)
             for rev in dd_data.sample(min(5, len(dd_data)))[tc_name].tolist():
                 st.info(f'"{rev}"')
+
+    _pdf_download_button(df, key_suffix="themes")
 
 
 def page_outliers(df):
@@ -925,22 +1078,24 @@ def page_outliers(df):
         )
 
         if not low_conf.empty:
-            fig = px.histogram(
+            fig_out = px.histogram(
                 low_conf, x="confidence", color="predicted_sentiment",
                 nbins=8,
                 title="How uncertain was the model? (grouped by predicted sentiment)",
                 color_discrete_map=COLOUR_MAP,
                 barmode="group",
             )
-            fig.update_traces(marker_line_color="white", marker_line_width=2)
-            fig.update_layout(
+            fig_out.update_traces(marker_line_color="white", marker_line_width=2)
+            fig_out.update_layout(
                 bargap=0.2,
                 xaxis_title="Model Confidence Score (e.g. 0.50 = 50% sure, almost a coin flip)",
                 yaxis_title="Number of Reviews",
                 xaxis=dict(tickformat=".0%"),
                 legend_title_text="Predicted Sentiment",
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig_out, use_container_width=True)
+            _chart_download(fig_out, "low_confidence_distribution.png",
+                            "Download low-confidence chart")
 
             tc_name   = _text_col(low_conf)
             show_cols = [tc_name, "predicted_sentiment", "confidence"] + \
@@ -951,7 +1106,7 @@ def page_outliers(df):
                 use_container_width=True
             )
             st.download_button(
-                "⬇ Download low-confidence reviews",
+                "Download low-confidence reviews",
                 data=low_conf.to_csv(index=False),
                 file_name="low_confidence_reviews.csv",
                 mime="text/csv",
@@ -974,13 +1129,15 @@ def page_outliers(df):
                         [c for c in ["themes"] if c in mixed_df.columns]
             st.dataframe(mixed_df[show_cols].head(30), use_container_width=True)
             st.download_button(
-                "⬇ Download mixed-signal reviews",
+                "Download mixed-signal reviews",
                 data=mixed_df.to_csv(index=False),
                 file_name="mixed_signal_reviews.csv",
                 mime="text/csv",
             )
         else:
             st.info("No mixed-signal reviews detected in this dataset.")
+
+    _pdf_download_button(df, key_suffix="outliers")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1007,32 +1164,11 @@ def main():
         "Upload CSV for analysis", type="csv",
         help="CSV must have a 'text', 'clean_text', or 'raw_text' column.")
 
-    run_button = st.sidebar.button("▶ Run Analysis", use_container_width=True)
+    run_button = st.sidebar.button("Run Analysis", use_container_width=True)
 
-    if st.sidebar.button("🗑 Reset / Clear Data", use_container_width=True):
+    if st.sidebar.button("Reset / Clear Data", use_container_width=True):
         st.session_state.clear()
         st.rerun()
-
-    # PDF export — only appears after analysis
-    if "analyzed_df" in st.session_state:
-        st.sidebar.markdown("---")
-        st.sidebar.header("Export")
-        custom_title = st.sidebar.text_input("Report title", value="Feedback Intelligence Report")
-        if st.sidebar.button("📄 Generate PDF Report", use_container_width=True):
-            with st.spinner("Building PDF..."):
-                try:
-                    pdf_bytes = generate_pdf_report(st.session_state.analyzed_df, custom_title)
-                    st.sidebar.download_button(
-                        label="⬇ Download PDF",
-                        data=pdf_bytes,
-                        file_name=f"feedback_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
-                    st.sidebar.success("PDF ready!")
-                except Exception as e:
-                    st.sidebar.error(f"PDF failed: {e}")
-                    st.sidebar.info("Run: pip install kaleido")
 
     # ── Run pipeline ───────────────────────────────────────────────────────────
     if uploaded_file and run_button:
@@ -1050,12 +1186,13 @@ def main():
         df = st.session_state.analyzed_df
         st.markdown("---")
 
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "📊  Overview",
-            "😊  Positive Reviews",
-            "😞  Negative Reviews",
-            "🏷️  Theme Extraction",
-            "⚠️  Outliers",
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "Overview",
+            "Positive Reviews",
+            "Neutral Reviews",
+            "Negative Reviews",
+            "Theme Extraction",
+            "Outliers",
         ])
 
         with tab1:
@@ -1063,10 +1200,12 @@ def main():
         with tab2:
             page_positive(df)
         with tab3:
-            page_negative(df)
+            page_neutral(df)
         with tab4:
-            page_themes(df)
+            page_negative(df)
         with tab5:
+            page_themes(df)
+        with tab6:
             page_outliers(df)
 
     elif not uploaded_file:
