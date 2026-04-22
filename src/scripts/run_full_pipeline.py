@@ -574,20 +574,53 @@ def generate_pdf_report(df, report_title="Feedback Intelligence Report"):
 #  TAB PAGE RENDERERS
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── Shared CSS injected once ───────────────────────────────────────────────────
+METRIC_CSS = """
+<style>
+[data-testid="stMetric"] {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 16px;
+    min-height: 110px;
+}
+[data-testid="stMetricLabel"] {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+}
+[data-testid="stMetricValue"] {
+    font-size: 28px;
+    font-weight: 700;
+}
+[data-testid="stMetricDelta"] {
+    font-size: 12px;
+    color: #6b7280 !important;
+}
+[data-testid="stMetricDelta"] svg {
+    display: none;
+}
+</style>
+"""
+
+
 def page_overview(df):
+    # Inject metric card CSS so all cards sit at equal height
+    st.markdown(METRIC_CSS, unsafe_allow_html=True)
+
     total    = len(df)
     pos      = int((df["predicted_sentiment"] == "positive").sum())
     neg      = int((df["predicted_sentiment"] == "negative").sum())
     mixed    = int(df["predicted_sentiment"].isin(["neutral","neutral/mixed"]).sum())
     avg_conf = df["confidence"].mean() if "confidence" in df.columns else None
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Reviews",   f"{total:,}")
-    c2.metric("Positive",        f"{pos:,}",   f"{pos/total*100:.1f}%")
-    c3.metric("Negative",        f"{neg:,}",   f"{neg/total*100:.1f}%")
-    c4.metric("Neutral / Mixed", f"{mixed:,}",  f"{mixed/total*100:.1f}%")
-    if avg_conf:
-        st.caption(f"Average model confidence: **{avg_conf*100:.1f}%**")
+    # KPI cards — all deltas use the same label format so height is consistent
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total Reviews",      f"{total:,}",                    "100% of reviews")
+    c2.metric("✅ Positive",         f"{pos:,}",                      f"{pos/total*100:.1f}% of reviews")
+    c3.metric("❌ Negative",         f"{neg:,}",                      f"{neg/total*100:.1f}% of reviews")
+    c4.metric("🔀 Neutral / Mixed",  f"{mixed:,}",                    f"{mixed/total*100:.1f}% of reviews")
+    c5.metric("🎯 Avg Confidence",   f"{avg_conf*100:.1f}%" if avg_conf else "N/A", "model certainty")
 
     st.markdown("---")
     col_a, col_b = st.columns(2)
@@ -640,9 +673,16 @@ def page_positive(df):
         return
 
     if "confidence" in pos_df.columns:
-        fig = px.histogram(pos_df, x="confidence", nbins=20,
+        fig = px.histogram(pos_df, x="confidence", nbins=10,
                            title="Confidence Score Distribution — Positive Reviews",
                            color_discrete_sequence=["#16a34a"])
+        fig.update_traces(marker_line_color="white", marker_line_width=2)
+        fig.update_layout(
+            bargap=0.15,
+            xaxis_title="Model Confidence Score (higher = more certain)",
+            yaxis_title="Number of Reviews",
+            xaxis=dict(tickformat=".0%"),
+        )
         st.plotly_chart(fig, use_container_width=True)
 
     if "themes" in pos_df.columns:
@@ -653,7 +693,12 @@ def page_positive(df):
         tc.columns = ["Theme", "Count"]
         fig2 = px.bar(tc, x="Count", y="Theme", orientation="h",
                       color_discrete_sequence=["#16a34a"])
-        fig2.update_layout(yaxis=dict(categoryorder="total ascending"))
+        fig2.update_traces(marker_line_color="white", marker_line_width=1)
+        fig2.update_layout(
+            bargap=0.2,
+            yaxis=dict(categoryorder="total ascending"),
+            xaxis_title="Number of reviews mentioning this theme",
+        )
         st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("**Sample positive reviews**")
@@ -674,9 +719,16 @@ def page_negative(df):
         return
 
     if "confidence" in neg_df.columns:
-        fig = px.histogram(neg_df, x="confidence", nbins=20,
+        fig = px.histogram(neg_df, x="confidence", nbins=10,
                            title="Confidence Score Distribution — Negative Reviews",
                            color_discrete_sequence=["#dc2626"])
+        fig.update_traces(marker_line_color="white", marker_line_width=2)
+        fig.update_layout(
+            bargap=0.15,
+            xaxis_title="Model Confidence Score (higher = more certain)",
+            yaxis_title="Number of Reviews",
+            xaxis=dict(tickformat=".0%"),
+        )
         st.plotly_chart(fig, use_container_width=True)
 
     if "themes" in neg_df.columns:
@@ -687,7 +739,12 @@ def page_negative(df):
         tc.columns = ["Theme", "Count"]
         fig2 = px.bar(tc, x="Count", y="Theme", orientation="h",
                       color_discrete_sequence=["#dc2626"])
-        fig2.update_layout(yaxis=dict(categoryorder="total ascending"))
+        fig2.update_traces(marker_line_color="white", marker_line_width=1)
+        fig2.update_layout(
+            bargap=0.2,
+            yaxis=dict(categoryorder="total ascending"),
+            xaxis_title="Number of reviews mentioning this theme",
+        )
         st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("**Sample negative reviews**")
@@ -717,7 +774,11 @@ def page_themes(df):
         fig = px.bar(theme_counts, x="Count", y="Theme", orientation="h",
                      title="Most Common Themes", color="Count",
                      color_continuous_scale="Viridis")
-        fig.update_layout(yaxis=dict(categoryorder="total ascending"))
+        fig.update_traces(marker_line_color="white", marker_line_width=1)
+        fig.update_layout(
+            bargap=0.2,
+            yaxis=dict(categoryorder="total ascending"),
+        )
         st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
@@ -750,7 +811,7 @@ def page_themes(df):
                       color="sentiment", color_discrete_map=COLOUR_MAP)
         st.plotly_chart(fig2, use_container_width=True)
 
-        # Top phrases for selected theme
+        # Top phrases
         st.markdown(f"**Top phrases in '{selected}'**")
         try:
             sent_docs = df_exp.groupby("Theme")["clean_text"].apply(
@@ -769,7 +830,12 @@ def page_themes(df):
                 pf = pd.DataFrame({"Phrase": phrases, "Count": pcounts})\
                        .sort_values("Count", ascending=True)
                 fig3 = px.bar(pf, x="Count", y="Phrase", orientation="h")
-                fig3.update_layout(xaxis_title="Mentions", yaxis_title="")
+                fig3.update_traces(marker_line_color="white", marker_line_width=1)
+                fig3.update_layout(
+                    bargap=0.2,
+                    xaxis_title="Mentions",
+                    yaxis_title="",
+                )
                 st.plotly_chart(fig3, use_container_width=True)
         except Exception as e:
             st.info(f"Could not extract phrases: {e}")
@@ -790,6 +856,8 @@ def page_themes(df):
                         sel_tt = theme_time[theme_time["Theme"] == selected]
                         fig_t  = px.bar(sel_tt, x="date", y="count",
                                         labels={"date":"Month","count":"Mentions"})
+                        fig_t.update_traces(marker_line_color="white", marker_line_width=1)
+                        fig_t.update_layout(bargap=0.2)
                         st.plotly_chart(fig_t, use_container_width=True)
                     with col_tr2:
                         st.markdown("**Emergent Themes (month-over-month)**")
@@ -805,7 +873,9 @@ def page_themes(df):
                         st.dataframe(
                             emer.sort_values("Change", ascending=False)
                             [["count_prev","count_curr","Change"]]
-                            .rename(columns={"count_prev":"Prev","count_curr":"Current","Change":"Momentum"}),
+                            .rename(columns={"count_prev":"Prev Month",
+                                             "count_curr":"Current Month",
+                                             "Change":"Momentum"}),
                             use_container_width=True)
                 else:
                     st.info("Need at least 2 months of data for trend momentum.")
@@ -834,25 +904,52 @@ def page_themes(df):
 
 def page_outliers(df):
     st.markdown("### Outlier & Edge-Case Reviews")
-    st.write("Low-confidence predictions and mixed-signal reviews that may need manual review.")
+    st.write(
+        "**Low-confidence predictions** are reviews the model was unsure about — "
+        "they scored close to 50/50 between two sentiments. "
+        "**Mixed-signal reviews** contain both positive and negative language in the same review."
+    )
 
     if "confidence" in df.columns:
+        st.markdown("---")
         st.markdown("#### Low-Confidence Predictions")
-        threshold = st.slider("Show reviews below this confidence level:", 0.40, 0.90, 0.60, 0.05)
-        low_conf  = df[df["confidence"] < threshold].copy()
-        st.markdown(f"**{len(low_conf):,} reviews** below {threshold*100:.0f}% confidence")
+        threshold = st.slider(
+            "Show reviews below this confidence level:",
+            0.40, 0.90, 0.60, 0.05,
+            help="Lower = model was very unsure. 60% means the model was only 60% sure of its prediction."
+        )
+        low_conf = df[df["confidence"] < threshold].copy()
+        st.markdown(
+            f"**{len(low_conf):,} reviews** were predicted with less than "
+            f"**{threshold*100:.0f}% confidence** — these may be worth checking manually."
+        )
 
         if not low_conf.empty:
-            fig = px.histogram(low_conf, x="confidence", color="predicted_sentiment",
-                               nbins=20, title="Confidence Distribution — Low-Confidence Reviews",
-                               color_discrete_map=COLOUR_MAP)
+            fig = px.histogram(
+                low_conf, x="confidence", color="predicted_sentiment",
+                nbins=8,
+                title="How uncertain was the model? (grouped by predicted sentiment)",
+                color_discrete_map=COLOUR_MAP,
+                barmode="group",
+            )
+            fig.update_traces(marker_line_color="white", marker_line_width=2)
+            fig.update_layout(
+                bargap=0.2,
+                xaxis_title="Model Confidence Score (e.g. 0.50 = 50% sure, almost a coin flip)",
+                yaxis_title="Number of Reviews",
+                xaxis=dict(tickformat=".0%"),
+                legend_title_text="Predicted Sentiment",
+            )
             st.plotly_chart(fig, use_container_width=True)
 
             tc_name   = _text_col(low_conf)
             show_cols = [tc_name, "predicted_sentiment", "confidence"] + \
-                        [c for c in ["themes","is_mixed"] if c in low_conf.columns]
-            st.dataframe(low_conf[show_cols].sort_values("confidence").head(30),
-                         use_container_width=True)
+                        [c for c in ["themes", "is_mixed"] if c in low_conf.columns]
+            st.markdown("**Reviews sorted by lowest confidence first:**")
+            st.dataframe(
+                low_conf[show_cols].sort_values("confidence").head(30),
+                use_container_width=True
+            )
             st.download_button(
                 "⬇ Download low-confidence reviews",
                 data=low_conf.to_csv(index=False),
@@ -864,7 +961,10 @@ def page_outliers(df):
 
     if "is_mixed" in df.columns:
         st.markdown("#### Mixed-Signal Reviews")
-        st.write("Reviews containing both positive and negative language that the model flagged.")
+        st.write(
+            "These reviews contain contrast words like *'but', 'however', 'although'* "
+            "alongside both positive and negative vocabulary — e.g. *'Great coffee but terrible service'*."
+        )
         mixed_df = df[df["is_mixed"] == True].copy()
         st.markdown(f"**{len(mixed_df):,} mixed-signal reviews** detected")
 
@@ -879,6 +979,8 @@ def page_outliers(df):
                 file_name="mixed_signal_reviews.csv",
                 mime="text/csv",
             )
+        else:
+            st.info("No mixed-signal reviews detected in this dataset.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
