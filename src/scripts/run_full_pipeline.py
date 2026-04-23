@@ -522,8 +522,16 @@ def _build_overview_pdf(df) -> bytes:
                                     color="predicted_sentiment",
                                     color_discrete_map=COLOUR_MAP)
                 fig_trend.update_layout(
-                    margin=dict(l=20, r=10, t=10, b=30),
+                    margin=dict(l=60, r=20, t=20, b=50),
                     paper_bgcolor="white",
+                    xaxis_title="Date",
+                    yaxis_title="Number of Reviews",
+                    yaxis=dict(
+                        rangemode="tozero",
+                        dtick=1,
+                        tickformat="d",
+                    ),
+                    legend_title_text="Sentiment",
                 )
                 png_trend = fig_trend.to_image(
                     format="png", width=700, height=320, scale=2)
