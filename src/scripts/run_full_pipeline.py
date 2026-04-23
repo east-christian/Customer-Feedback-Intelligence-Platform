@@ -1101,27 +1101,31 @@ METRIC_CSS = """
 # ── Shared axis/layout helpers — keep every chart consistent ─────────────────
 
 def _vertical_bar_axis():
-    """Vertical bar / histogram: x=0–100% every 10%, y=whole integers from 0."""
+    """Vertical bar / histogram: x=0–100% every 10%, y=whole integers from 0.
+    Bars align exactly under their percentage label by using fixed bin edges."""
     return dict(
         xaxis=dict(
             tickformat=".0%",
-            range=[0, 1],
+            range=[-0.05, 1.05],          # small padding so end bars aren't clipped
             tickvals=[i / 10 for i in range(0, 11)],
+            ticktext=[f"{i*10}%" for i in range(0, 11)],
             title_standoff=10,
         ),
         yaxis=dict(rangemode="tozero", dtick=1, tickformat="d"),
     )
 
 def _horizontal_bar_axis(max_val):
-    """Horizontal bar: x=whole integers 0 to max_val, no decimals."""
+    """Horizontal bar: x=whole integers, bars aligned to their tick via tick0=0, dtick.
+    No decimals, no 0.5 steps."""
     nice_max = max(1, int(max_val) + 1)
-    step = max(1, round(nice_max / 8))
+    step = max(1, int(nice_max / 8))
     return dict(
         xaxis=dict(
-            rangemode="tozero",
-            range=[0, nice_max],
+            range=[0, nice_max + step * 0.5],  # padding so rightmost bar isn't clipped
+            tick0=0,
             dtick=step,
             tickformat="d",
+            rangemode="tozero",
         ),
         yaxis=dict(categoryorder="total ascending"),
     )
@@ -1145,7 +1149,8 @@ def _base_layout(**extra):
         paper_bgcolor="white",
         plot_bgcolor="white",
         margin=dict(l=10, r=20, t=45, b=70),
-        bargap=0.15,
+        bargap=0.2,       # consistent gap between bars across all charts
+        bargroupgap=0.05, # gap between groups (for grouped bar charts)
     )
     layout.update(extra)
     return layout
@@ -1818,39 +1823,6 @@ def main():
         "Upload CSV for analysis", type="csv",
         help="CSV must have a 'text', 'clean_text', or 'raw_text' column.")
 
-    # ── Custom theme editor ────────────────────────────────────────────────────
-    st.sidebar.markdown("---")
-    st.sidebar.header("Theme Settings")
-    st.sidebar.caption(
-        "Customise the themes the LLM will assign to reviews. "
-        "Add or remove themes to match your business. "
-        "Each theme must be on its own line."
-    )
-
-    default_themes_text = "\n".join(THEMES)
-    custom_themes_raw = st.sidebar.text_area(
-        "Themes (one per line)",
-        value=default_themes_text,
-        height=220,
-        key="custom_themes",
-    )
-
-    # Parse the textarea into a clean list, ignore blank lines
-    active_themes = [
-        t.strip() for t in custom_themes_raw.strip().splitlines()
-        if t.strip()
-    ]
-
-    if len(active_themes) == 0:
-        st.sidebar.warning("No themes defined — using defaults.")
-        active_themes = THEMES
-
-    if st.sidebar.button("Reset to default themes", use_container_width=True):
-        st.session_state["custom_themes"] = default_themes_text
-        st.rerun()
-
-    st.sidebar.caption(f"{len(active_themes)} theme(s) active")
-
     st.sidebar.markdown("---")
     run_button = st.sidebar.button("Run Analysis", use_container_width=True)
 
@@ -1864,9 +1836,8 @@ def main():
             df = pd.read_csv(uploaded_file)
             df = preprocess_reviews(df)
             df = predict_reviews(df, model, vectorizer)
-            df = extract_themes(df, active_themes)   # use active_themes not hardcoded THEMES
+            df = extract_themes(df, THEMES)
             st.session_state.analyzed_df = df
-            st.session_state.active_themes_used = active_themes
         except Exception as exc:
             st.error(f"Error during analysis: {exc}")
 
@@ -1898,7 +1869,7 @@ def main():
             page_outliers(df)
 
     elif not uploaded_file:
-        st.info("👆 Upload a CSV file in the sidebar and click **Run Analysis** to get started.")
+        st.info("Upload a CSV file in the sidebar and click Run Analysis to get started.")
 
 
 if __name__ == "__main__":
