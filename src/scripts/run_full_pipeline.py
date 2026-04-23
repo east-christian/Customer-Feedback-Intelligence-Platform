@@ -618,7 +618,16 @@ def page_overview(df):
                                     title="Sentiment Over Time (Monthly)",
                                     color_discrete_map=COLOUR_MAP)
                 fig_trend.update_layout(**_base_layout(
-                    yaxis=dict(rangemode="tozero", dtick=1, tickformat="d")))
+                    xaxis_title="Date",
+                    yaxis_title="Number of Reviews",
+                    legend_title_text="Sentiment",
+                    yaxis=dict(
+                        rangemode="tozero",
+                        range=[0, None],
+                        dtick=1,
+                        tickformat="d",
+                    ),
+                ))
                 st.plotly_chart(fig_trend, use_container_width=True)
                 _chart_download(fig_trend, "sentiment_trend.png", "Download trend chart")
             else:
