@@ -696,7 +696,12 @@ def page_positive(df):
         fig_hist.update_layout(**_base_layout(
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
-            **_vertical_bar_axis(),
+            xaxis=dict(
+                tickformat=".0%",
+                range=[-0.05, 1.05],
+                tickvals=[i/10 for i in range(0, 11)],
+                ticktext=[f"{i*10}%" for i in range(0, 11)],
+            ),
             yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
         ))
         st.plotly_chart(fig_hist, use_container_width=True)
@@ -745,7 +750,12 @@ def page_negative(df):
         fig_hist.update_layout(**_base_layout(
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
-            **_vertical_bar_axis(),
+            xaxis=dict(
+                tickformat=".0%",
+                range=[-0.05, 1.05],
+                tickvals=[i/10 for i in range(0, 11)],
+                ticktext=[f"{i*10}%" for i in range(0, 11)],
+            ),
             yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
         ))
         st.plotly_chart(fig_hist, use_container_width=True)
@@ -796,7 +806,12 @@ def page_neutral(df):
         fig_hist.update_layout(**_base_layout(
             xaxis_title="Model Confidence Score (higher = more certain it is neutral)",
             yaxis_title="Number of Reviews",
-            **_vertical_bar_axis(),
+            xaxis=dict(
+                tickformat=".0%",
+                range=[-0.05, 1.05],
+                tickvals=[i/10 for i in range(0, 11)],
+                ticktext=[f"{i*10}%" for i in range(0, 11)],
+            ),
             yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
         ))
         st.plotly_chart(fig_hist, use_container_width=True)
@@ -1052,7 +1067,12 @@ def page_outliers(df):
                 xaxis_title="Model Confidence Score",
                 yaxis_title="Number of Reviews",
                 legend_title_text="Predicted Sentiment",
-                **_vertical_bar_axis(),
+                xaxis=dict(
+                    tickformat=".0%",
+                    range=[-0.05, 1.05],
+                    tickvals=[i/10 for i in range(0, 11)],
+                    ticktext=[f"{i*10}%" for i in range(0, 11)],
+                ),
                 yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
             ))
             st.plotly_chart(fig_out, use_container_width=True)
