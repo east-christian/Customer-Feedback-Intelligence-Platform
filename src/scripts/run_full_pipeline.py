@@ -696,7 +696,9 @@ def page_positive(df):
         fig_hist.update_layout(**_base_layout(
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
-            **_vertical_bar_axis()))
+            **_vertical_bar_axis(),
+            yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
+        ))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "positive_confidence.png", "Download confidence chart")
 
@@ -743,7 +745,9 @@ def page_negative(df):
         fig_hist.update_layout(**_base_layout(
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
-            **_vertical_bar_axis()))
+            **_vertical_bar_axis(),
+            yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
+        ))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "negative_confidence.png", "Download confidence chart")
 
@@ -792,7 +796,9 @@ def page_neutral(df):
         fig_hist.update_layout(**_base_layout(
             xaxis_title="Model Confidence Score (higher = more certain it is neutral)",
             yaxis_title="Number of Reviews",
-            **_vertical_bar_axis()))
+            **_vertical_bar_axis(),
+            yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
+        ))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "neutral_confidence.png", "Download confidence chart")
 
@@ -1046,7 +1052,9 @@ def page_outliers(df):
                 xaxis_title="Model Confidence Score",
                 yaxis_title="Number of Reviews",
                 legend_title_text="Predicted Sentiment",
-                **_vertical_bar_axis()))
+                **_vertical_bar_axis(),
+                yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
+            ))
             st.plotly_chart(fig_out, use_container_width=True)
             _chart_download(fig_out, "low_confidence_distribution.png",
                             "Download low-confidence chart")
