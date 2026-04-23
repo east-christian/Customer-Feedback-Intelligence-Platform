@@ -388,6 +388,16 @@ def _base_layout(**extra):
     return layout
 
 
+def _hist_yaxis(df):
+    """Dynamic y-axis for confidence histograms.
+    Always steps of 20 (0, 20, 40...), scales to dataset size, minimum 20."""
+    n = len(df)
+    # estimate tallest bin: roughly n / number_of_bins, padded generously
+    est_max = max(20, n // 4)
+    ceiling = ((est_max // 20) + 1) * 20   # round up to next multiple of 20
+    return dict(rangemode="tozero", dtick=20, tickformat="d", range=[0, ceiling])
+
+
 # ── Chart download ─────────────────────────────────────────────────────────────
 
 def _chart_download(fig, filename, label="Download chart as PNG"):
@@ -615,7 +625,7 @@ def page_overview(df):
             if len(td) > 1:
                 fig_trend = px.line(td, x="date", y="count",
                                     color="predicted_sentiment",
-                                    title="Sentiment Over Time (Monthly)",
+                                    title="Sentiment Over Time",
                                     color_discrete_map=COLOUR_MAP)
                 fig_trend.update_layout(**_base_layout(
                     xaxis_title="Date",
@@ -702,7 +712,7 @@ def page_positive(df):
                 tickvals=[i/10 for i in range(0, 11)],
                 ticktext=[f"{i*10}%" for i in range(0, 11)],
             ),
-            yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
+            yaxis=_hist_yaxis(pos_df),
         ))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "positive_confidence.png", "Download confidence chart")
@@ -756,7 +766,7 @@ def page_negative(df):
                 tickvals=[i/10 for i in range(0, 11)],
                 ticktext=[f"{i*10}%" for i in range(0, 11)],
             ),
-            yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
+            yaxis=_hist_yaxis(neg_df),
         ))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "negative_confidence.png", "Download confidence chart")
@@ -812,7 +822,7 @@ def page_neutral(df):
                 tickvals=[i/10 for i in range(0, 11)],
                 ticktext=[f"{i*10}%" for i in range(0, 11)],
             ),
-            yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
+            yaxis=_hist_yaxis(neu_df),
         ))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "neutral_confidence.png", "Download confidence chart")
@@ -1073,7 +1083,7 @@ def page_outliers(df):
                     tickvals=[i/10 for i in range(0, 11)],
                     ticktext=[f"{i*10}%" for i in range(0, 11)],
                 ),
-                yaxis=dict(range=[0, 20], dtick=2, tickformat="d"),
+                yaxis=_hist_yaxis(low_conf),
             ))
             st.plotly_chart(fig_out, use_container_width=True)
             _chart_download(fig_out, "low_confidence_distribution.png",
