@@ -332,6 +332,53 @@ def extract_themes(df, themes_list, batch_size=30, max_workers=2):
     return df
 
 
+# ── AI Executive Summary ───────────────────────────────────────────────────────
+
+def generate_executive_summary(df):
+    """Send key stats to Ollama and get a 3-paragraph plain-English business summary."""
+    total    = len(df)
+    pos      = int((df["predicted_sentiment"] == "positive").sum())
+    neg      = int((df["predicted_sentiment"] == "negative").sum())
+    mixed    = int(df["predicted_sentiment"].isin(["neutral","neutral/mixed"]).sum())
+    avg_conf = df["confidence"].mean() * 100 if "confidence" in df.columns else None
+
+    top_themes = ""
+    if "themes" in df.columns:
+        exp = df["themes"].str.split(r",\s*").explode().str.strip()
+        exp = exp[~exp.isin(["FAILED","","NOT PROCESSED"])]
+        top_themes = ", ".join(exp.value_counts().head(5).index.tolist())
+
+    top_neg_theme = ""
+    if "themes" in df.columns:
+        neg_df = df[df["predicted_sentiment"] == "negative"]
+        if not neg_df.empty:
+            neg_exp = neg_df["themes"].str.split(r",\s*").explode().str.strip()
+            neg_exp = neg_exp[~neg_exp.isin(["FAILED","","NOT PROCESSED"])]
+            if not neg_exp.empty:
+                top_neg_theme = neg_exp.value_counts().idxmax()
+
+    prompt = f"""You are a business analyst writing an executive summary for a customer feedback report.
+
+Here are the key statistics from the analysis:
+- Total reviews analysed: {total}
+- Positive reviews: {pos} ({pos/total*100:.1f}%)
+- Negative reviews: {neg} ({neg/total*100:.1f}%)
+- Neutral/Mixed reviews: {mixed} ({mixed/total*100:.1f}%)
+- Average model confidence: {f"{avg_conf:.1f}%" if avg_conf else "N/A"}
+- Top mentioned themes: {top_themes if top_themes else "N/A"}
+- Top theme in negative reviews: {top_neg_theme if top_neg_theme else "N/A"}
+
+Write exactly 3 short paragraphs in plain business English:
+1. What is going well (based on positive sentiment and top themes)
+2. What needs attention (based on negative sentiment and top negative theme)
+3. What to do next (concrete actionable recommendations)
+
+Keep each paragraph to 2-3 sentences. Be specific and use the numbers provided.
+Do not use bullet points. Do not add headings. Write in a professional but clear tone."""
+
+    return call_llm(prompt)
+
+
 # ── Shared CSS ─────────────────────────────────────────────────────────────────
 
 METRIC_CSS = """
@@ -389,12 +436,10 @@ def _base_layout(**extra):
 
 
 def _hist_yaxis(df):
-    """Dynamic y-axis for confidence histograms.
-    Always steps of 20 (0, 20, 40...), scales to dataset size, minimum 20."""
+    """Dynamic y-axis: steps of 20, scales with dataset size, minimum 20."""
     n = len(df)
-    # estimate tallest bin: roughly n / number_of_bins, padded generously
     est_max = max(20, n // 4)
-    ceiling = ((est_max // 20) + 1) * 20   # round up to next multiple of 20
+    ceiling = ((est_max // 20) + 1) * 20
     return dict(rangemode="tozero", dtick=20, tickformat="d", range=[0, ceiling])
 
 
@@ -409,45 +454,9 @@ def _chart_download(fig, filename, label="Download chart as PNG"):
         st.caption("Install kaleido for chart downloads: pip install kaleido")
 
 
-# ── Report download (used by all tabs) ────────────────────────────────────────
-
-def _report_download(df, key):
-    """Renders a Generate Report button that produces a full PDF of all results."""
-    st.markdown("---")
-    st.markdown("**Download Report**")
-
-    pdf_key = f"pdf_bytes_{key}"
-
-    if st.button("Generate Report", key=f"gen_{key}"):
-        with st.spinner("Building report..."):
-            try:
-                st.session_state[pdf_key] = _build_overview_pdf(df)
-            except Exception as e:
-                st.error(f"Report generation failed: {e}")
-                st.info("Make sure reportlab and kaleido are installed:\n"
-                        "pip install reportlab kaleido")
-
-    if pdf_key in st.session_state:
-        st.download_button(
-            label="Download PDF Report",
-            data=st.session_state[pdf_key],
-            file_name=f"customer_feedback_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf",
-            key=f"dl_{key}",
-        )
-        st.success("Report ready — click Download PDF Report above.")
-
-
-# ── Overview PDF builder ───────────────────────────────────────────────────────
+# ── PDF builder ────────────────────────────────────────────────────────────────
 
 def _build_overview_pdf(df) -> bytes:
-    """
-    Build a clean PDF with:
-      - KPI summary table
-      - Sentiment pie chart (requires kaleido)
-      - Monthly trend chart (requires kaleido, only if date column exists)
-    Returns raw PDF bytes.
-    """
     total    = len(df)
     pos      = int((df["predicted_sentiment"] == "positive").sum())
     neg      = int((df["predicted_sentiment"] == "negative").sum())
@@ -460,7 +469,7 @@ def _build_overview_pdf(df) -> bytes:
     GRN  = rl_colors.HexColor("#16a34a")
     RED  = rl_colors.HexColor("#dc2626")
 
-    base   = getSampleStyleSheet()
+    base    = getSampleStyleSheet()
     title_s = ParagraphStyle("T",  parent=base["Title"],   fontSize=20,
                               textColor=HDR, fontName="Helvetica-Bold", spaceAfter=4)
     sub_s   = ParagraphStyle("S",  parent=base["Normal"],  fontSize=10,
@@ -477,14 +486,12 @@ def _build_overview_pdf(df) -> bytes:
                             topMargin=0.85*inch,  bottomMargin=0.75*inch)
     story = []
 
-    # ── Cover ─────────────────────────────────────────────────────────────────
     story.append(Paragraph("Customer Feedback Report", title_s))
     story.append(Paragraph(
         f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}  |  "
         f"{total:,} reviews analysed", sub_s))
     story.append(HRFlowable(width="100%", thickness=1, color=RULE, spaceAfter=12))
 
-    # ── KPI table ─────────────────────────────────────────────────────────────
     story.append(Paragraph("Summary Metrics", h2_s))
     kpi_rows = [
         ["Metric",           "Count",        "Share"],
@@ -517,24 +524,20 @@ def _build_overview_pdf(df) -> bytes:
     story.append(kpi_tbl)
     story.append(Spacer(1, 14))
 
-    # ── Sentiment pie chart ────────────────────────────────────────────────────
     story.append(Paragraph("Sentiment Distribution", h2_s))
     try:
         counts = df["predicted_sentiment"].value_counts().reset_index()
         counts.columns = ["sentiment", "count"]
         fig_pie = px.pie(counts, names="sentiment", values="count",
                          color="sentiment", color_discrete_map=COLOUR_MAP)
-        fig_pie.update_layout(
-            margin=dict(l=10, r=10, t=10, b=10),
-            paper_bgcolor="white",
-        )
+        fig_pie.update_layout(margin=dict(l=10, r=10, t=10, b=10),
+                              paper_bgcolor="white")
         png_pie = fig_pie.to_image(format="png", width=500, height=320, scale=2)
         story.append(RLImage(io.BytesIO(png_pie), width=4.5*inch, height=2.9*inch))
     except Exception as e:
         story.append(Paragraph(
             f"Pie chart unavailable ({e}). Run: pip install kaleido", body_s))
 
-    # ── Monthly trend chart ────────────────────────────────────────────────────
     if "date" in df.columns:
         story.append(Spacer(1, 10))
         story.append(Paragraph("Sentiment Over Time", h2_s))
@@ -552,11 +555,8 @@ def _build_overview_pdf(df) -> bytes:
                     paper_bgcolor="white",
                     xaxis_title="Date",
                     yaxis_title="Number of Reviews",
-                    yaxis=dict(
-                        rangemode="tozero",
-                        dtick=1,
-                        tickformat="d",
-                    ),
+                    yaxis=dict(rangemode="tozero", range=[0, None],
+                               dtick=1, tickformat="d"),
                     legend_title_text="Sentiment",
                 )
                 png_trend = fig_trend.to_image(
@@ -569,7 +569,6 @@ def _build_overview_pdf(df) -> bytes:
         except Exception as e:
             story.append(Paragraph(f"Trend chart unavailable: {e}", body_s))
 
-    # ── Theme summary table (if themes exist) ─────────────────────────────────
     if "themes" in df.columns:
         story.append(Spacer(1, 10))
         story.append(Paragraph("Top Themes", h2_s))
@@ -577,8 +576,8 @@ def _build_overview_pdf(df) -> bytes:
         exp_all = exp_all[~exp_all.isin(["FAILED", "", "NOT PROCESSED"])]
         tc = exp_all.value_counts().head(8).reset_index()
         tc.columns = ["Theme", "Mentions"]
-        theme_rows = [["Theme", "Mentions"]] + tc.values.tolist()
-        theme_rows = [[str(c) for c in row] for row in theme_rows]
+        theme_rows = [["Theme", "Mentions"]] + [[str(c) for c in row]
+                       for row in tc.values.tolist()]
         theme_tbl = Table(theme_rows, colWidths=[4.0*inch, 2.0*inch])
         theme_tbl.setStyle(TableStyle([
             ("BACKGROUND",    (0, 0), (-1, 0), BG),
@@ -608,6 +607,68 @@ def _build_overview_pdf(df) -> bytes:
 def page_overview(df):
     st.markdown(METRIC_CSS, unsafe_allow_html=True)
 
+    # ── AI Executive Summary ───────────────────────────────────────────────────
+    st.markdown("### Executive Summary")
+    sum_key = "exec_summary"
+    if st.button("Generate AI Summary", key="gen_summary"):
+        with st.spinner("Asking AI to analyse results..."):
+            try:
+                summary = generate_executive_summary(df)
+                st.session_state[sum_key] = summary
+            except Exception as e:
+                st.error(f"Could not generate summary: {e}")
+                st.info("Make sure Ollama is running: ollama run gemma2:9b")
+
+    if sum_key in st.session_state:
+        paragraphs = [p.strip() for p in
+                      st.session_state[sum_key].split("\n\n") if p.strip()]
+        labels = ["What is going well", "What needs attention", "What to do next"]
+        colors_box = ["#f0fdf4", "#fef2f2", "#eff6ff"]
+        border_colors = ["#16a34a", "#dc2626", "#2563eb"]
+        for i, para in enumerate(paragraphs[:3]):
+            label = labels[i] if i < len(labels) else f"Point {i+1}"
+            bg    = colors_box[i] if i < len(colors_box) else "#f9fafb"
+            bdr   = border_colors[i] if i < len(border_colors) else "#6b7280"
+            st.markdown(
+                f'<div style="background:{bg}; border-left:4px solid {bdr}; '
+                f'padding:14px 18px; border-radius:6px; margin-bottom:10px;">'
+                f'<strong style="color:{bdr};">{label}</strong><br>'
+                f'<span style="font-size:14px; color:#374151;">{para}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+    else:
+        st.caption("Click Generate AI Summary to get an AI-written analysis of the results.")
+
+    st.markdown("---")
+
+    # ── Month selector ─────────────────────────────────────────────────────────
+    if "date" in df.columns:
+        try:
+            df["date"] = pd.to_datetime(df["date"])
+            min_date = df["date"].min().date()
+            max_date = df["date"].max().date()
+            if min_date < max_date:
+                st.markdown("**Filter by date range**")
+                date_range = st.slider(
+                    "Select date range:",
+                    min_value=min_date,
+                    max_value=max_date,
+                    value=(min_date, max_date),
+                    format="MMM YYYY",
+                    key="date_slider_overview",
+                )
+                df = df[(df["date"].dt.date >= date_range[0]) &
+                        (df["date"].dt.date <= date_range[1])]
+                st.caption(
+                    f"Showing {len(df):,} reviews from "
+                    f"{date_range[0].strftime('%b %Y')} to "
+                    f"{date_range[1].strftime('%b %Y')}"
+                )
+        except Exception:
+            pass
+
+    # ── KPI cards ──────────────────────────────────────────────────────────────
     total    = len(df)
     pos      = int((df["predicted_sentiment"] == "positive").sum())
     neg      = int((df["predicted_sentiment"] == "negative").sum())
@@ -623,7 +684,37 @@ def page_overview(df):
 
     st.markdown("---")
 
-    # Pie chart — full width
+    # ── Keyword search ─────────────────────────────────────────────────────────
+    st.markdown("**Keyword Search**")
+    keyword = st.text_input(
+        "Search reviews for a keyword or phrase:",
+        placeholder="e.g. wait, rude, coffee, parking...",
+        key="keyword_overview",
+    )
+    if keyword.strip():
+        tc_name    = _text_col(df)
+        mask       = df[tc_name].str.contains(keyword.strip(), case=False, na=False)
+        kw_df      = df[mask]
+        st.markdown(
+            f"**{len(kw_df):,} reviews** contain the word "
+            f"**'{keyword.strip()}'**"
+        )
+        if not kw_df.empty:
+            kw_counts = kw_df["predicted_sentiment"].value_counts().reset_index()
+            kw_counts.columns = ["sentiment", "count"]
+            fig_kw = px.pie(kw_counts, names="sentiment", values="count",
+                            title=f"Sentiment for reviews mentioning '{keyword.strip()}'",
+                            color="sentiment", color_discrete_map=COLOUR_MAP)
+            st.plotly_chart(fig_kw, use_container_width=True)
+            _chart_download(fig_kw, "keyword_sentiment.png",
+                            "Download keyword sentiment chart")
+            with st.expander(f"Show matching reviews ({len(kw_df)})"):
+                show_cols = [tc_name, "predicted_sentiment", "confidence"] + \
+                            [c for c in ["themes"] if c in kw_df.columns]
+                st.dataframe(kw_df[show_cols].head(50), use_container_width=True)
+        st.markdown("---")
+
+    # ── Pie chart ──────────────────────────────────────────────────────────────
     counts = df["predicted_sentiment"].value_counts().reset_index()
     counts.columns = ["sentiment", "count"]
     fig_pie = px.pie(counts, names="sentiment", values="count",
@@ -632,10 +723,9 @@ def page_overview(df):
     st.plotly_chart(fig_pie, use_container_width=True)
     _chart_download(fig_pie, "sentiment_distribution.png", "Download sentiment pie chart")
 
-    # Time trend — full width below pie
+    # ── Time trend ─────────────────────────────────────────────────────────────
     if "date" in df.columns:
         try:
-            df["date"] = pd.to_datetime(df["date"])
             td = (df.groupby([pd.Grouper(key="date", freq="ME"), "predicted_sentiment"])
                     .size().reset_index(name="count"))
             if len(td) > 1:
@@ -647,12 +737,8 @@ def page_overview(df):
                     xaxis_title="Date",
                     yaxis_title="Number of Reviews",
                     legend_title_text="Sentiment",
-                    yaxis=dict(
-                        rangemode="tozero",
-                        range=[0, None],
-                        dtick=1,
-                        tickformat="d",
-                    ),
+                    yaxis=dict(rangemode="tozero", range=[0, None],
+                               dtick=1, tickformat="d"),
                 ))
                 st.plotly_chart(fig_trend, use_container_width=True)
                 _chart_download(fig_trend, "sentiment_trend.png", "Download trend chart")
@@ -660,16 +746,15 @@ def page_overview(df):
                 st.info("Not enough date range for a trend chart.")
         except Exception:
             st.info("Date column could not be parsed.")
-    else:
-        st.info("No 'date' column found — add one to your CSV to see trends.")
 
+    # ── Data preview ───────────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("**Data preview — first 10 rows**")
     preview_cols = [c for c in ["predicted_sentiment","confidence","is_mixed","themes"]
                     if c in df.columns]
     st.dataframe(df[preview_cols].head(10), use_container_width=True)
 
-    # ── Downloads ─────────────────────────────────────────────────────────────
+    # ── Downloads ──────────────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("**Download**")
     col_csv, col_pdf = st.columns(2)
@@ -690,8 +775,7 @@ def page_overview(df):
                     st.session_state["pdf_bytes_overview"] = _build_overview_pdf(df)
                 except Exception as e:
                     st.error(f"PDF generation failed: {e}")
-                    st.info("Make sure reportlab and kaleido are installed:\n"
-                            "pip install reportlab kaleido")
+                    st.info("Run: pip install reportlab kaleido")
 
         if "pdf_bytes_overview" in st.session_state:
             st.download_button(
@@ -721,8 +805,7 @@ def page_positive(df):
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
             xaxis=dict(
-                tickformat=".0%",
-                range=[-0.05, 1.05],
+                tickformat=".0%", range=[-0.05, 1.05],
                 tickvals=[i/10 for i in range(0, 11)],
                 ticktext=[f"{i*10}%" for i in range(0, 11)],
             ),
@@ -755,8 +838,6 @@ def page_positive(df):
         conf = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
         st.success(f'"{row[tc_name]}"{conf}')
 
-    _report_download(df, key="rpt_positive")
-
 
 def page_negative(df):
     neg_df = df[df["predicted_sentiment"] == "negative"].copy()
@@ -775,8 +856,7 @@ def page_negative(df):
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
             xaxis=dict(
-                tickformat=".0%",
-                range=[-0.05, 1.05],
+                tickformat=".0%", range=[-0.05, 1.05],
                 tickvals=[i/10 for i in range(0, 11)],
                 ticktext=[f"{i*10}%" for i in range(0, 11)],
             ),
@@ -809,8 +889,6 @@ def page_negative(df):
         conf = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
         st.error(f'"{row[tc_name]}"{conf}')
 
-    _report_download(df, key="rpt_negative")
-
 
 def page_neutral(df):
     neu_df = df[df["predicted_sentiment"].isin(["neutral","neutral/mixed"])].copy()
@@ -831,8 +909,7 @@ def page_neutral(df):
             xaxis_title="Model Confidence Score (higher = more certain it is neutral)",
             yaxis_title="Number of Reviews",
             xaxis=dict(
-                tickformat=".0%",
-                range=[-0.05, 1.05],
+                tickformat=".0%", range=[-0.05, 1.05],
                 tickvals=[i/10 for i in range(0, 11)],
                 ticktext=[f"{i*10}%" for i in range(0, 11)],
             ),
@@ -877,13 +954,37 @@ def page_neutral(df):
         label = "Mixed" if ("is_mixed" in row and row["is_mixed"]) else "Neutral"
         st.warning(f'**[{label}]** "{row[tc_name]}"{conf}')
 
-    _report_download(df, key="rpt_neutral")
-
 
 def page_themes(df):
     if "themes" not in df.columns:
         st.warning("No themes column found. Run the analysis pipeline first.")
         return
+
+    # ── Keyword search inside themes ───────────────────────────────────────────
+    st.markdown("**Keyword Search**")
+    kw = st.text_input(
+        "Search reviews for a keyword:",
+        placeholder="e.g. wait, rude, coffee...",
+        key="keyword_themes",
+    )
+    if kw.strip():
+        tc_name = _text_col(df)
+        mask    = df[tc_name].str.contains(kw.strip(), case=False, na=False)
+        kw_df   = df[mask]
+        st.markdown(f"**{len(kw_df):,} reviews** mention '{kw.strip()}'")
+        if not kw_df.empty and "themes" in kw_df.columns:
+            kw_exp = kw_df["themes"].str.split(r",\s*").explode().str.strip()
+            kw_exp = kw_exp[~kw_exp.isin(["FAILED","","NOT PROCESSED"])]
+            kw_tc  = kw_exp.value_counts().head(8).reset_index()
+            kw_tc.columns = ["Theme","Count"]
+            fig_kw = px.bar(kw_tc, x="Count", y="Theme", orientation="h",
+                            title=f"Themes for reviews mentioning '{kw.strip()}'",
+                            color_discrete_sequence=["#065a82"])
+            fig_kw.update_traces(marker_line_color="white", marker_line_width=1)
+            fig_kw.update_layout(**_base_layout(
+                **_horizontal_bar_axis(kw_tc["Count"].max())))
+            st.plotly_chart(fig_kw, use_container_width=True)
+        st.markdown("---")
 
     exp_all = df["themes"].str.split(r",\s*").explode().str.strip()
     exp_all = exp_all[~exp_all.isin(["FAILED","","NOT PROCESSED"])]
@@ -1060,8 +1161,6 @@ def page_themes(df):
             for rev in dd_data.sample(min(5, len(dd_data)))[tc_name].tolist():
                 st.info(f'"{rev}"')
 
-    _report_download(df, key="rpt_themes")
-
 
 def page_outliers(df):
     st.markdown("### Outlier & Edge-Case Reviews")
@@ -1092,8 +1191,7 @@ def page_outliers(df):
                 yaxis_title="Number of Reviews",
                 legend_title_text="Predicted Sentiment",
                 xaxis=dict(
-                    tickformat=".0%",
-                    range=[-0.05, 1.05],
+                    tickformat=".0%", range=[-0.05, 1.05],
                     tickvals=[i/10 for i in range(0, 11)],
                     ticktext=[f"{i*10}%" for i in range(0, 11)],
                 ),
@@ -1139,8 +1237,6 @@ def page_outliers(df):
             )
         else:
             st.info("No mixed-signal reviews detected in this dataset.")
-
-    _report_download(df, key="rpt_outliers")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
