@@ -1221,7 +1221,7 @@ def main():
         help="CSV should include 'text', 'clean_text', or 'raw_text' column."
     )
 
-    run_button = st.sidebar.button("▶️ Run Analysis", use_container_width=True, type="primary")
+    run_button = st.sidebar.button("▶️ Run Analysis", use_container_width=True)
 
     if st.sidebar.button("🗑️ Reset / Clear", use_container_width=True):
         st.session_state.clear()
