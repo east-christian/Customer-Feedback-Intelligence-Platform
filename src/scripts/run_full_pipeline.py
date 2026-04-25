@@ -478,11 +478,13 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
         f"{len(df):,} reviews  |  Sentiments: {sentiments_shown}", sub_s))
     story.append(HRFlowable(width="100%", thickness=1, color=RULE, spaceAfter=12))
 
+    # Summary Metrics
     if inc_kpi:
         story.append(Paragraph("Summary Metrics", h2_s))
         story.append(_pdf_kpi_table(df, HDR, RULE, BG))
         story.append(Spacer(1, 14))
 
+    # Sentiment Pie Chart
     if inc_pie:
         story.append(Paragraph("Sentiment Distribution", h2_s))
         try:
@@ -490,14 +492,53 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
             counts.columns = ["sentiment","count"]
             fig_pie = px.pie(counts, names="sentiment", values="count",
                              color="sentiment", color_discrete_map=COLOUR_MAP)
-            fig_pie.update_layout(margin=dict(l=10,r=10,t=10,b=10), paper_bgcolor="white")
-            png_pie = fig_pie.to_image(format="png", width=500, height=320, scale=2)
-            story.append(RLImage(io.BytesIO(png_pie), width=4.5*inch, height=2.9*inch))
+            fig_pie.update_layout(margin=dict(l=10,r=10,t=10,b=10),
+                                  paper_bgcolor="white")
+            png = fig_pie.to_image(format="png", width=500, height=320, scale=2)
+            story.append(RLImage(io.BytesIO(png), width=4.5*inch, height=2.9*inch))
+            story.append(Spacer(1, 10))
         except Exception as e:
             story.append(Paragraph(f"Pie chart unavailable: {e}", body_s))
 
+    # Per-sentiment theme bar charts
+    if "themes" in df.columns:
+        sentiment_colours = {
+            "positive":      "#16a34a",
+            "negative":      "#dc2626",
+            "neutral":       "#6b7280",
+            "neutral/mixed": "#9ca3af",
+        }
+        for sent, clr in sentiment_colours.items():
+            sent_df = df[df["predicted_sentiment"] == sent]
+            if sent_df.empty:
+                continue
+            exp = sent_df["themes"].str.split(r",\s*").explode().str.strip()
+            exp = exp[~exp.isin(["FAILED","","NOT PROCESSED"])]
+            if exp.empty:
+                continue
+            tc = exp.value_counts().head(8).reset_index()
+            tc.columns = ["Theme","Count"]
+            try:
+                fig_bar = px.bar(tc, x="Count", y="Theme", orientation="h",
+                                 title=f"Top Themes — {sent.capitalize()} Reviews",
+                                 color_discrete_sequence=[clr])
+                fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
+                fig_bar.update_layout(
+                    bargap=0.2, paper_bgcolor="white", plot_bgcolor="white",
+                    margin=dict(l=20,r=20,t=40,b=20),
+                    xaxis=dict(rangemode="tozero", tickformat="d"),
+                    yaxis=dict(categoryorder="total ascending"))
+                png = fig_bar.to_image(format="png", width=700, height=350, scale=2)
+                story.append(Paragraph(
+                    f"Top Themes — {sent.capitalize()} Reviews", h2_s))
+                story.append(RLImage(io.BytesIO(png), width=6.0*inch, height=3.0*inch))
+                story.append(Spacer(1, 10))
+            except Exception as e:
+                story.append(Paragraph(
+                    f"Bar chart unavailable for {sent}: {e}", body_s))
+
+    # Sentiment Over Time
     if inc_trend and "date" in df.columns:
-        story.append(Spacer(1, 10))
         story.append(Paragraph("Sentiment Over Time", h2_s))
         try:
             d  = df.copy()
@@ -510,18 +551,21 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
                 fig_t.update_layout(
                     margin=dict(l=60,r=20,t=20,b=50), paper_bgcolor="white",
                     xaxis_title="Date", yaxis_title="Number of Reviews",
-                    yaxis=dict(rangemode="tozero", range=[0,None], dtick=1, tickformat="d"),
+                    yaxis=dict(rangemode="tozero", range=[0,None],
+                               dtick=1, tickformat="d"),
                     legend_title_text="Sentiment")
-                png_t = fig_t.to_image(format="png", width=700, height=320, scale=2)
-                story.append(RLImage(io.BytesIO(png_t), width=6.0*inch, height=2.7*inch))
+                png = fig_t.to_image(format="png", width=700, height=320, scale=2)
+                story.append(RLImage(io.BytesIO(png), width=6.0*inch, height=2.7*inch))
+                story.append(Spacer(1, 10))
             else:
-                story.append(Paragraph("Not enough date range for a trend chart.", body_s))
+                story.append(Paragraph(
+                    "Not enough date range for a trend chart.", body_s))
         except Exception as e:
             story.append(Paragraph(f"Trend chart unavailable: {e}", body_s))
 
+    # Top Themes Table
     if inc_themes and "themes" in df.columns:
-        story.append(Spacer(1, 10))
-        story.append(Paragraph("Top Themes", h2_s))
+        story.append(Paragraph("Top Themes Summary", h2_s))
         story.append(_pdf_theme_table(df, HDR, RULE, BG, body_s))
 
     doc.build(story)
@@ -733,7 +777,7 @@ def page_overview(df):
                 st.info("Run: pip install reportlab kaleido")
 
     if "pdf_bytes_overview" in st.session_state:
-        st.success(f"Report ready — {st.session_state.get('pdf_review_count','?')} reviews included.")
+        st.success("Report ready.")
         st.download_button(
             label="Download PDF Report",
             data=st.session_state["pdf_bytes_overview"],
