@@ -69,7 +69,6 @@ SENTIMENT_COLOR_MAP = {
 
 st.set_page_config(
     page_title="Customer Feedback Intelligence Platform",
-    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -790,7 +789,7 @@ def classify_theme_lifecycle(df_exploded):
             first_half_presence = (theme_data[theme_data["date"].isin(first_half_months)]["count"] > 0).sum()
 
             if first_half_presence <= 1 and second_half_avg > 0:
-                lifecycle = "🌱 Emerging"
+                lifecycle = "🚀 Emerging"
                 color = "#3B82F6"
             elif second_half_avg > first_half_avg * 1.3:
                 lifecycle = "📈 Growing"
@@ -1118,15 +1117,15 @@ def render_dashboard(df):
         render_spike_detection(df)
 
         st.markdown("---")
-        st.markdown("### 🔄 Theme Lifecycle")
+        st.markdown("### Theme Lifecycle")
         render_theme_lifecycle(df_exploded)
 
         st.markdown("---")
-        st.markdown("### 📊 Most Recent Month Momentum")
+        st.markdown("### Most Recent Month Momentum")
         render_emergent_themes(df_exploded)
 
     with tab3:
-        st.markdown("### 🔍 What are customers actually saying?")
+        st.markdown("### What are customers actually saying?")
         st.caption("Filter by theme + sentiment to see distinctive phrases and read actual review verbatims.")
         render_deep_dive(df, df_exploded)
 
@@ -1143,8 +1142,8 @@ def render_dashboard(df):
         render_word_cloud(df, wc_sentiment)
 
     with tab4:
-        st.markdown("### 📥 Export Analyzed Data")
-        st.caption("Download the cleaned analysis results as CSV. Only the meaningful columns are included.")
+        st.markdown("### Export Analyzed Data")
+        st.caption("Download the cleaned analysis results as CSV")
 
         # Only keep columns that are actually present in the dataframe
         display_cols = []
@@ -1165,7 +1164,7 @@ def render_dashboard(df):
         col1, col2 = st.columns([1, 3])
         with col1:
             st.download_button(
-                label="📥 Download CSV",
+                label="Download CSV",
                 data=export_df.to_csv(index=False),
                 file_name="analysis_results.csv",
                 mime="text/csv",
@@ -1202,7 +1201,7 @@ def render_dashboard(df):
 
 
 def main():
-    st.markdown('<div class="main-header">📊 Customer Feedback Intelligence Platform</div>',
+    st.markdown('<div class="main-header">Customer Feedback Intelligence Platform</div>',
                 unsafe_allow_html=True)
     st.markdown('<div class="sub-header">ML-powered sentiment analysis + LLM theme extraction for actionable customer insights</div>',
                 unsafe_allow_html=True)
