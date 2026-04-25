@@ -290,7 +290,7 @@ def extract_themes(df, themes_list, batch_size=30, max_workers=2):
     if len(df) < before:
         print(f"Dropped {before-len(df)} reviews due to extraction failure.")
     pbar.progress(1.0)
-    status.text("Theme extraction complete!")
+    status.text("Complete!")
     return df
 
 
@@ -525,7 +525,7 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
                 fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
                 fig_bar.update_layout(
                     bargap=0.2, paper_bgcolor="white", plot_bgcolor="white",
-                    margin=dict(l=160, r=40, t=50, b=60),
+                    margin=dict(l=200, r=40, t=50, b=60),
                     xaxis=dict(
                         rangemode="tozero", tickformat="d",
                         title=dict(text="Number of Mentions", font=dict(size=13, color="#1e3a5f")),
@@ -533,7 +533,7 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
                     ),
                     yaxis=dict(
                         categoryorder="total ascending",
-                        title=dict(text="Theme", font=dict(size=13, color="#1e3a5f")),
+                        title=dict(text="", font=dict(size=13, color="#1e3a5f")),
                         tickfont=dict(size=11),
                     ),
                 )
@@ -596,36 +596,6 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
 
 def page_overview(df):
     st.markdown(METRIC_CSS, unsafe_allow_html=True)
-
-    # ── AI Executive Summary ───────────────────────────────────────────────────
-    st.markdown("### Executive Summary")
-    if st.button("Generate AI Summary", key="gen_summary"):
-        with st.spinner("Asking AI to analyse results..."):
-            try:
-                summary = generate_executive_summary(df)
-                st.session_state["exec_summary"] = summary
-            except Exception as e:
-                st.error(f"Could not generate summary: {e}")
-                st.info("Make sure Ollama is running: ollama run gemma3:4b")
-
-    if "exec_summary" in st.session_state:
-        paragraphs = [p.strip() for p in
-                      st.session_state["exec_summary"].split("\n\n") if p.strip()]
-        labels  = ["What is going well", "What needs attention", "What to do next"]
-        bgs     = ["#f0fdf4", "#fef2f2", "#eff6ff"]
-        borders = ["#16a34a", "#dc2626", "#2563eb"]
-        for i, para in enumerate(paragraphs[:3]):
-            label = labels[i] if i < len(labels) else f"Point {i+1}"
-            bg    = bgs[i]    if i < len(bgs)    else "#f9fafb"
-            bdr   = borders[i] if i < len(borders) else "#6b7280"
-            st.markdown(
-                f'<div style="background:{bg}; border-left:4px solid {bdr}; '
-                f'padding:14px 18px; border-radius:6px; margin-bottom:10px;">'
-                f'<strong style="color:{bdr};">{label}</strong><br>'
-                f'<span style="font-size:14px; color:#374151;">{para}</span>'
-                f'</div>', unsafe_allow_html=True)
-    else:
-        st.caption("Click Generate AI Summary to get an AI-written analysis of the results.")
 
     st.markdown("---")
 
@@ -724,6 +694,37 @@ def page_overview(df):
     preview_cols = [c for c in ["predicted_sentiment","confidence","is_mixed","themes"]
                     if c in df.columns]
     st.dataframe(df[preview_cols].head(10), use_container_width=True)
+
+    # ── AI Executive Summary ───────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Executive Summary")
+    if st.button("Generate AI Summary", key="gen_summary"):
+        with st.spinner("Asking AI to analyse results..."):
+            try:
+                summary = generate_executive_summary(df)
+                st.session_state["exec_summary"] = summary
+            except Exception as e:
+                st.error(f"Could not generate summary: {e}")
+                st.info("Make sure Ollama is running: ollama run gemma3:4b")
+
+    if "exec_summary" in st.session_state:
+        paragraphs = [p.strip() for p in
+                      st.session_state["exec_summary"].split("\n\n") if p.strip()]
+        labels  = ["What is going well", "What needs attention", "What to do next"]
+        bgs     = ["#f0fdf4", "#fef2f2", "#eff6ff"]
+        borders = ["#16a34a", "#dc2626", "#2563eb"]
+        for i, para in enumerate(paragraphs[:3]):
+            label = labels[i] if i < len(labels) else f"Point {i+1}"
+            bg    = bgs[i]    if i < len(bgs)    else "#f9fafb"
+            bdr   = borders[i] if i < len(borders) else "#6b7280"
+            st.markdown(
+                f'<div style="background:{bg}; border-left:4px solid {bdr}; '
+                f'padding:14px 18px; border-radius:6px; margin-bottom:10px;">'
+                f'<strong style="color:{bdr};">{label}</strong><br>'
+                f'<span style="font-size:14px; color:#374151;">{para}</span>'
+                f'</div>', unsafe_allow_html=True)
+    else:
+        st.caption("Click Generate AI Summary to get an AI-written analysis of the results.")
 
     # ── Customizable Report Builder ────────────────────────────────────────────
     st.markdown("---")
@@ -1204,12 +1205,205 @@ def page_outliers(df):
             st.info("No mixed-signal reviews detected in this dataset.")
 
 
+def page_methodology():
+    st.markdown("## About & Methodology")
+    st.write(
+        "This page explains how the Customer Feedback Intelligence Platform works — "
+        "what happens behind the scenes when you upload a CSV and click Run Analysis."
+    )
+
+    # ── Overview ───────────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Platform Overview")
+    st.markdown(
+        """
+        The platform combines two AI techniques to analyse customer reviews:
+
+        1. **Sentiment Classification** — a Machine Learning model trained on thousands
+           of labelled reviews to predict whether a review is positive, negative, or neutral.
+
+        2. **Theme Extraction** — a locally-running Large Language Model (LLM) that reads
+           each review and assigns it to one or more business topics (themes) from a
+           predefined list.
+
+        Together these two systems turn raw unstructured text into structured, actionable
+        business intelligence — without sending any data to the internet.
+        """
+    )
+
+    # ── Sentiment Model ────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Sentiment Classification Model")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Algorithm**")
+        st.info("Logistic Regression")
+        st.markdown("**Text Vectorization**")
+        st.info("TF-IDF (Term Frequency – Inverse Document Frequency)")
+        st.markdown("**Training Split**")
+        st.info("80% training / 20% testing")
+
+    with col2:
+        st.markdown("**Vocabulary Size**")
+        st.info("5,000 most significant terms")
+        st.markdown("**N-gram Range**")
+        st.info("Unigrams and bigrams (1–2 word phrases)")
+        st.markdown("**Classes**")
+        st.info("Positive · Negative · Neutral/Mixed")
+
+    st.markdown("**How it works step by step:**")
+    st.markdown(
+        """
+        1. Each review is cleaned — lowercased, punctuation removed, stopwords stripped
+        2. The cleaned text is converted to a numerical vector using TF-IDF, which captures
+           how important each word is relative to the full dataset
+        3. The Logistic Regression model calculates a probability for each class
+           (positive, negative, neutral)
+        4. The class with the highest probability becomes the predicted sentiment
+        5. The highest probability value becomes the **confidence score**
+        """
+    )
+
+    st.markdown("**What is TF-IDF?**")
+    st.markdown(
+        """
+        TF-IDF stands for Term Frequency – Inverse Document Frequency. It gives each word
+        a weight based on two factors:
+        - **Term Frequency** — how often the word appears in this review
+        - **Inverse Document Frequency** — how rare the word is across all reviews
+
+        Words that appear in every review (like "the", "and") get very low weights.
+        Words that appear often in one review but rarely in others (like "disgusting" or
+        "phenomenal") get high weights — these are the words that actually carry meaning.
+        """
+    )
+
+    # ── Confidence Score ───────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Confidence Score")
+    st.markdown(
+        """
+        The confidence score is the model's probability estimate for its predicted class,
+        expressed as a percentage.
+
+        | Score | Meaning |
+        |---|---|
+        | 90–100% | Very certain — the review strongly signals one sentiment |
+        | 70–89%  | Confident — clear sentiment with minor ambiguity |
+        | 60–69%  | Moderate — some mixed signals in the review |
+        | Below 60% | Low confidence — review may be ambiguous or mixed |
+
+        A score of 50% means the model was essentially guessing between two classes.
+        Reviews below 60% confidence appear in the **Outliers** tab for manual inspection.
+        """
+    )
+
+    # ── Mixed Signal Detection ─────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Mixed-Signal Detection")
+    st.markdown(
+        """
+        Some reviews contain both positive and negative language — for example:
+        *"Great coffee but the service was terrible."*
+
+        The platform flags these using a rule-based system that checks for:
+        - **Contrast words** — but, however, although, though, yet, except, overall
+        - **Dual polarity vocabulary** — the review contains both positive cues
+          (great, love, excellent) and negative cues (bad, rude, awful)
+        - **Probability proximity** — the model's positive and negative probability
+          scores are both above 30% and within 25% of each other
+
+        If a review meets these conditions it is flagged as `is_mixed = True` and
+        highlighted in the Neutral Reviews and Outliers tabs.
+        """
+    )
+
+    # ── Theme Extraction ───────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Theme Extraction")
+
+    col3, col4 = st.columns(2)
+    with col3:
+        st.markdown("**LLM Model**")
+        st.info("Gemma 3 4B (Google, runs locally via Ollama)")
+        st.markdown("**Batch Size**")
+        st.info("30 reviews per LLM call")
+        st.markdown("**Max Retries**")
+        st.info("5 retries per batch before marking as failed")
+
+    with col4:
+        st.markdown("**Processing**")
+        st.info("Parallel batches (2 workers)")
+        st.markdown("**Hallucination Guard**")
+        st.info("Only themes from the approved list are accepted")
+        st.markdown("**Caching**")
+        st.info("Results cached — same CSV skips LLM on re-upload")
+
+    st.markdown("**The 8 business themes:**")
+    theme_descriptions = {
+        "Product Quality":      "Taste, freshness, item quality, food or drink standards",
+        "Product Availability": "Out of stock items, limited menu, seasonal unavailability",
+        "Customer Service":     "Staff attitude, helpfulness, friendliness, complaint handling",
+        "Speed of Service":     "Wait times, queue length, drive-thru speed, order delays",
+        "Store Environment":    "Cleanliness, atmosphere, seating, noise, parking, location",
+        "Price & Value":        "Cost, affordability, value for money, pricing fairness",
+        "Digital & Rewards":    "App functionality, online ordering, loyalty points, deals",
+        "Policies & Safety":    "Return policies, hygiene standards, health precautions",
+    }
+    for theme, desc in theme_descriptions.items():
+        st.markdown(
+            f'<div style="background:#f8f9fa; border-left:3px solid #1e3a5f; '
+            f'padding:10px 14px; border-radius:4px; margin-bottom:6px;">'
+            f'<strong style="color:#1e3a5f;">{theme}</strong> — '
+            f'<span style="color:#374151; font-size:14px;">{desc}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Data Privacy ───────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Data Privacy")
+    st.markdown(
+        """
+        All processing happens **entirely on your local machine**. No review data is
+        sent to any external server or cloud API.
+
+        - The sentiment model runs locally using scikit-learn
+        - The LLM (Gemma 3 4B) runs locally via Ollama
+        - PDF reports are generated locally using ReportLab
+        - No internet connection is required after initial setup
+        """
+    )
+
+    # ── Tech Stack ─────────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### Technology Stack")
+
+    tc1, tc2, tc3 = st.columns(3)
+    with tc1:
+        st.markdown("**Machine Learning**")
+        st.markdown("- scikit-learn\n- Logistic Regression\n- TF-IDF Vectorizer\n- joblib (model persistence)")
+    with tc2:
+        st.markdown("**LLM & NLP**")
+        st.markdown("- Ollama (local LLM server)\n- Gemma 3 4B\n- ThreadPoolExecutor\n- JSON parsing")
+    with tc3:
+        st.markdown("**Dashboard & Export**")
+        st.markdown("- Streamlit\n- Plotly\n- ReportLab\n- pandas")
+
+    st.markdown("---")
+    st.caption(
+        "Customer Feedback Intelligence Platform — "
+        "Built with Python · scikit-learn · Ollama · Streamlit"
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    st.title("Customer Feedback Intelligence Platform")
+    st.markdown("# Customer Feedback Intelligence Platform")
     st.markdown("Upload a review CSV in the sidebar, click **Run Analysis**, "
                 "then navigate results using the tabs below.")
 
@@ -1249,9 +1443,9 @@ def main():
     if "analyzed_df" in st.session_state:
         df = st.session_state.analyzed_df
         st.markdown("---")
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "Overview", "Positive Reviews", "Neutral Reviews",
-            "Negative Reviews", "Theme Extraction", "Outliers",
+            "Negative Reviews", "Theme Extraction", "Outliers", "About",
         ])
         with tab1: page_overview(df)
         with tab2: page_positive(df)
@@ -1259,9 +1453,12 @@ def main():
         with tab4: page_negative(df)
         with tab5: page_themes(df)
         with tab6: page_outliers(df)
+        with tab7: page_methodology()
 
     elif not uploaded_file:
         st.info("Upload a CSV file in the sidebar and click Run Analysis to get started.")
+        st.markdown("---")
+        page_methodology()
 
 
 if __name__ == "__main__":
