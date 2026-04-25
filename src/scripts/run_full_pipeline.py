@@ -520,7 +520,7 @@ def render_kpi_cards(df):
         kpi_card("Neutral", f"{neu_pct:.1f}%", COLOR_NEUTRAL)
     with cols[4]:
         if avg_stars is not None and not pd.isna(avg_stars):
-            kpi_card("Avg Rating", f"{avg_stars:.2f} ⭐", "#1F2937")
+            kpi_card("Avg Rating", f"{avg_stars:.2f} ", "#1F2937")
         else:
             kpi_card("Themes Found", f"{len(THEMES)}", "#1F2937")
 
@@ -571,7 +571,7 @@ def render_top_compliments_concerns(df_exploded):
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("### 🏆 Top Compliments")
+        st.markdown("### Top Compliments")
         st.caption("Themes customers love most")
         comp_df = top_compliments.reset_index()[['Theme', 'positive_pct', 'Total']]
         comp_df.columns = ['Theme', 'Positive %', 'Reviews']
@@ -592,7 +592,7 @@ def render_top_compliments_concerns(df_exploded):
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        st.markdown("### ⚠️ Top Concerns")
+        st.markdown("### Top Concerns")
         st.caption("Themes customers complain about most")
         conc_df = top_concerns.reset_index()[['Theme', 'negative_pct', 'Total']]
         conc_df.columns = ['Theme', 'Negative %', 'Reviews']
@@ -896,7 +896,7 @@ def render_emergent_themes(df_exploded):
 
 def render_word_cloud(df, sentiment):
     if not WORDCLOUD_AVAILABLE:
-        st.info("📦 Word cloud feature requires the 'wordcloud' package. Install it with: `pip install wordcloud`")
+        st.info("Word cloud feature requires the 'wordcloud' package. Install it with: `pip install wordcloud`")
         return
 
     df_filtered = df[df["predicted_sentiment"].apply(normalize_sentiment_label) == sentiment]
@@ -947,10 +947,10 @@ def render_deep_dive(df, df_exploded):
 
     col1, col2 = st.columns(2)
     with col1:
-        dd_theme = st.selectbox("🎯 Select Theme", unique_themes, key="dd_theme_v2")
+        dd_theme = st.selectbox("Select Theme", unique_themes, key="dd_theme_v2")
     with col2:
         dd_sentiment = st.selectbox(
-            "💭 Select Sentiment",
+            "Select Sentiment",
             ["negative", "positive", "neutral"],
             key="dd_sentiment_v2"
         )
@@ -973,7 +973,7 @@ def render_deep_dive(df, df_exploded):
     col_a, col_b = st.columns(2)
 
     with col_a:
-        st.markdown(f"##### 🔑 Top Phrases — {dd_sentiment.title()} reviews of {dd_theme}")
+        st.markdown(f"##### Top Phrases — {dd_sentiment.title()} reviews of {dd_theme}")
         try:
             sent_data = df_exploded_clean[df_exploded_clean['sentiment_clean'] == dd_sentiment]
             theme_docs = sent_data.groupby('Theme')['clean_text'].apply(
@@ -1031,7 +1031,7 @@ def render_deep_dive(df, df_exploded):
     with col_b:
         header_col, btn_col = st.columns([2, 1])
         with header_col:
-            st.markdown(f"##### 💬 Sample {dd_sentiment.title()} Reviews")
+            st.markdown(f"##### Sample {dd_sentiment.title()} Reviews")
         with btn_col:
             # Pressing this triggers a Streamlit rerun, which re-samples 5 fresh reviews
             st.button("🔄 Refresh", help="Load 5 different random reviews",
@@ -1099,12 +1099,12 @@ def render_dashboard(df):
         render_top_compliments_concerns(df_exploded)
 
         st.markdown("---")
-        st.markdown("### 🎨 Theme × Sentiment Heatmap")
+        st.markdown("### Theme × Sentiment Heatmap")
         st.caption("Visual breakdown of how each theme is perceived by customers. Spot problem areas at a glance.")
         render_heatmap(df_exploded)
 
         st.markdown("---")
-        st.markdown("### 📋 Recent Predictions Sample")
+        st.markdown("###  Data preview - frist 10 rows")
         render_summary_table(df)
 
     with tab2:
@@ -1131,7 +1131,7 @@ def render_dashboard(df):
         render_deep_dive(df, df_exploded)
 
         st.markdown("---")
-        st.markdown("### ☁️ Word Cloud by Sentiment")
+        st.markdown("### Word Cloud by Sentiment")
         st.caption("Visual representation of the most frequent words used in each sentiment category. Bigger = more frequent.")
 
         wc_sentiment = st.radio(
