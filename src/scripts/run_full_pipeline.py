@@ -411,34 +411,62 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #1e3a5f 0%, #065a82 100%) !important;
 }
+[data-testid="stSidebar"] .stMarkdown,
+[data-testid="stSidebar"] .stMarkdown p,
 [data-testid="stSidebar"] label,
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span,
-[data-testid="stSidebar"] div,
+[data-testid="stSidebar"] span:not(.st-emotion-cache-1kyxreq),
+[data-testid="stSidebar"] p {
+    color: #ffffff !important;
+}
 [data-testid="stSidebar"] h1,
 [data-testid="stSidebar"] h2,
 [data-testid="stSidebar"] h3 {
     color: #ffffff !important;
 }
-[data-testid="stSidebar"] .stButton button {
+/* Run Analysis and Reset buttons — white bg, dark navy text */
+[data-testid="stSidebar"] .stButton > button {
     background-color: #ffffff !important;
     color: #1e3a5f !important;
     font-weight: 700 !important;
+    font-size: 15px !important;
     border-radius: 8px !important;
-    border: none !important;
-    font-size: 16px !important;
+    border: 2px solid #ffffff !important;
+    padding: 10px 16px !important;
+    width: 100% !important;
 }
-[data-testid="stSidebar"] .stButton button:hover {
-    background-color: #e0f2fe !important;
+[data-testid="stSidebar"] .stButton > button:hover {
+    background-color: #cfe8ff !important;
     color: #1e3a5f !important;
+    border-color: #cfe8ff !important;
 }
-[data-testid="stSidebar"] .stFileUploader {
-    background-color: rgba(255,255,255,0.15) !important;
+[data-testid="stSidebar"] .stButton > button p,
+[data-testid="stSidebar"] .stButton > button span {
+    color: #1e3a5f !important;
+    font-weight: 700 !important;
+}
+/* File uploader area */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] {
+    background-color: rgba(255,255,255,0.12) !important;
+    border: 1.5px solid rgba(255,255,255,0.4) !important;
     border-radius: 8px !important;
     padding: 8px !important;
 }
-[data-testid="stSidebar"] .stFileUploader label {
+[data-testid="stSidebar"] [data-testid="stFileUploader"] label,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] span,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] p,
+[data-testid="stSidebar"] [data-testid="stFileUploader"] small {
     color: #ffffff !important;
+}
+/* Upload button inside file uploader */
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
+    background-color: #ffffff !important;
+    color: #1e3a5f !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+    border: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span {
+    color: #1e3a5f !important;
 }
 [data-testid="stSidebar"] small,
 [data-testid="stSidebar"] .stCaption {
