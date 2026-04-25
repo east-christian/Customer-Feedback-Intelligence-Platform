@@ -1175,7 +1175,7 @@ def render_dashboard(df):
                        unsafe_allow_html=True)
 
         st.markdown("---")
-        st.markdown("#### 📊 Summary Statistics")
+        st.markdown("#### Summary Statistics")
 
         sum_col1, sum_col2, sum_col3 = st.columns(3)
 
