@@ -409,17 +409,28 @@ def _chart_download(fig, filename, label="Download chart as PNG"):
         st.caption("Install kaleido for chart downloads: pip install kaleido")
 
 
-# ── CSV download (used by all tabs except Overview) ───────────────────────────
+# ── Report download (used by all tabs) ────────────────────────────────────────
 
-def _csv_download(df, key):
+def _report_download(df, key):
+    """Renders a Generate Report button that produces a full PDF of all results."""
     st.markdown("---")
-    st.download_button(
-        label="Download analysed data as CSV",
-        data=df.to_csv(index=False),
-        file_name=f"analysis_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-        mime="text/csv",
-        key=key,
-    )
+    st.markdown("**Download Report**")
+    if st.button("Generate Report", key=f"gen_{key}"):
+        with st.spinner("Building report..."):
+            try:
+                pdf_bytes = _build_overview_pdf(df)
+                st.download_button(
+                    label="Download PDF Report",
+                    data=pdf_bytes,
+                    file_name=f"customer_feedback_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    key=f"dl_{key}",
+                )
+                st.success("Report ready — click Download PDF Report above.")
+            except Exception as e:
+                st.error(f"Report generation failed: {e}")
+                st.info("Make sure reportlab and kaleido are installed:\n"
+                        "pip install reportlab kaleido")
 
 
 # ── Overview PDF builder ───────────────────────────────────────────────────────
@@ -741,7 +752,7 @@ def page_positive(df):
         conf = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
         st.success(f'"{row[tc_name]}"{conf}')
 
-    _csv_download(df, key="dl_csv_positive")
+    _report_download(df, key="rpt_positive")
 
 
 def page_negative(df):
@@ -795,7 +806,7 @@ def page_negative(df):
         conf = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
         st.error(f'"{row[tc_name]}"{conf}')
 
-    _csv_download(df, key="dl_csv_negative")
+    _report_download(df, key="rpt_negative")
 
 
 def page_neutral(df):
@@ -863,7 +874,7 @@ def page_neutral(df):
         label = "Mixed" if ("is_mixed" in row and row["is_mixed"]) else "Neutral"
         st.warning(f'**[{label}]** "{row[tc_name]}"{conf}')
 
-    _csv_download(df, key="dl_csv_neutral")
+    _report_download(df, key="rpt_neutral")
 
 
 def page_themes(df):
@@ -1046,7 +1057,7 @@ def page_themes(df):
             for rev in dd_data.sample(min(5, len(dd_data)))[tc_name].tolist():
                 st.info(f'"{rev}"')
 
-    _csv_download(df, key="dl_csv_themes")
+    _report_download(df, key="rpt_themes")
 
 
 def page_outliers(df):
@@ -1126,7 +1137,7 @@ def page_outliers(df):
         else:
             st.info("No mixed-signal reviews detected in this dataset.")
 
-    _csv_download(df, key="dl_csv_outliers")
+    _report_download(df, key="rpt_outliers")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
