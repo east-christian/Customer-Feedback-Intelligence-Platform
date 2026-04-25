@@ -1,4 +1,5 @@
 import io
+import hashlib
 from pathlib import Path
 from datetime import datetime
 import joblib
@@ -65,7 +66,7 @@ def _text_col(df):
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
 
-def call_llm(prompt, model="gemma2:9b"):
+def call_llm(prompt, model="gemma3:4b"):
     try:
         response = ollama.chat(model=model, messages=[{"role": "user", "content": prompt}])
         return response["message"]["content"]
@@ -131,12 +132,12 @@ def train_model():
     return model, vectorizer, accuracy
 
 
+@st.cache_resource
 def load_or_train_model():
     ensure_output_dir()
     if MODEL_FILE.exists() and VECTORIZER_FILE.exists():
         return joblib.load(MODEL_FILE), joblib.load(VECTORIZER_FILE), None
-    with st.spinner("Training model from sample data..."):
-        return train_model()
+    return train_model()
 
 
 # ── Preprocessing & prediction ────────────────────────────────────────────────
@@ -1239,6 +1240,13 @@ def page_outliers(df):
             st.info("No mixed-signal reviews detected in this dataset.")
 
 
+# ── CSV hash for theme caching ─────────────────────────────────────────────────
+
+def _csv_hash(df):
+    """Unique fingerprint for a dataframe — used to cache theme extraction results."""
+    return hashlib.md5(pd.util.hash_pandas_object(df).values).hexdigest()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1271,7 +1279,14 @@ def main():
             df = pd.read_csv(uploaded_file)
             df = preprocess_reviews(df)
             df = predict_reviews(df, model, vectorizer)
-            df = extract_themes(df, THEMES)
+            # Use cached themes if same CSV was uploaded before
+            cache_key = f"themes_{_csv_hash(df)}"
+            if cache_key in st.session_state:
+                df["themes"] = st.session_state[cache_key]
+                st.info("Themes loaded from cache — skipping LLM extraction.")
+            else:
+                df = extract_themes(df, THEMES)
+                st.session_state[cache_key] = df["themes"].copy()
             st.session_state.analyzed_df = df
         except Exception as exc:
             st.error(f"Error during analysis: {exc}")
