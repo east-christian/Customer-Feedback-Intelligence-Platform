@@ -470,17 +470,14 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
                             topMargin=0.85*inch,  bottomMargin=0.75*inch)
     story = []
 
-    sentiments_shown = ", ".join(s.capitalize() for s in
-                                  df["predicted_sentiment"].unique().tolist())
     story.append(Paragraph(report_title, title_s))
     story.append(Paragraph(
-        f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}  |  "
-        f"{len(df):,} reviews  |  Sentiments: {sentiments_shown}", sub_s))
+        f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", sub_s))
     story.append(HRFlowable(width="100%", thickness=1, color=RULE, spaceAfter=12))
 
     # Summary Metrics
     if inc_kpi:
-        story.append(Paragraph("Summary Metrics", h2_s))
+        story.append(Paragraph("Summary", h2_s))
         story.append(_pdf_kpi_table(df, HDR, RULE, BG))
         story.append(Spacer(1, 14))
 
@@ -492,8 +489,11 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
             counts.columns = ["sentiment","count"]
             fig_pie = px.pie(counts, names="sentiment", values="count",
                              color="sentiment", color_discrete_map=COLOUR_MAP)
-            fig_pie.update_layout(margin=dict(l=10,r=10,t=10,b=10),
-                                  paper_bgcolor="white")
+            fig_pie.update_layout(
+                margin=dict(l=20, r=20, t=20, b=20),
+                paper_bgcolor="white",
+                legend=dict(font=dict(size=12)),
+            )
             png = fig_pie.to_image(format="png", width=500, height=320, scale=2)
             story.append(RLImage(io.BytesIO(png), width=4.5*inch, height=2.9*inch))
             story.append(Spacer(1, 10))
@@ -525,13 +525,22 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
                 fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
                 fig_bar.update_layout(
                     bargap=0.2, paper_bgcolor="white", plot_bgcolor="white",
-                    margin=dict(l=20,r=20,t=40,b=20),
-                    xaxis=dict(rangemode="tozero", tickformat="d"),
-                    yaxis=dict(categoryorder="total ascending"))
-                png = fig_bar.to_image(format="png", width=700, height=350, scale=2)
+                    margin=dict(l=160, r=40, t=50, b=60),
+                    xaxis=dict(
+                        rangemode="tozero", tickformat="d",
+                        title=dict(text="Number of Mentions", font=dict(size=13, color="#1e3a5f")),
+                        tickfont=dict(size=11),
+                    ),
+                    yaxis=dict(
+                        categoryorder="total ascending",
+                        title=dict(text="Theme", font=dict(size=13, color="#1e3a5f")),
+                        tickfont=dict(size=11),
+                    ),
+                )
+                png = fig_bar.to_image(format="png", width=800, height=380, scale=2)
                 story.append(Paragraph(
                     f"Top Themes — {sent.capitalize()} Reviews", h2_s))
-                story.append(RLImage(io.BytesIO(png), width=6.0*inch, height=3.0*inch))
+                story.append(RLImage(io.BytesIO(png), width=6.5*inch, height=3.1*inch))
                 story.append(Spacer(1, 10))
             except Exception as e:
                 story.append(Paragraph(
@@ -549,11 +558,20 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
                 fig_t = px.line(td, x="date", y="count", color="predicted_sentiment",
                                 color_discrete_map=COLOUR_MAP)
                 fig_t.update_layout(
-                    margin=dict(l=60,r=20,t=20,b=50), paper_bgcolor="white",
-                    xaxis_title="Date", yaxis_title="Number of Reviews",
-                    yaxis=dict(rangemode="tozero", range=[0,None],
-                               dtick=1, tickformat="d"),
-                    legend_title_text="Sentiment")
+                    margin=dict(l=80, r=30, t=30, b=70),
+                    paper_bgcolor="white",
+                    xaxis=dict(
+                        title=dict(text="Date", font=dict(size=13, color="#1e3a5f")),
+                        tickfont=dict(size=11),
+                    ),
+                    yaxis=dict(
+                        rangemode="tozero", range=[0, None],
+                        dtick=1, tickformat="d",
+                        title=dict(text="Number of Reviews", font=dict(size=13, color="#1e3a5f")),
+                        tickfont=dict(size=11),
+                    ),
+                    legend=dict(title=dict(text="Sentiment"), font=dict(size=11)),
+                )
                 png = fig_t.to_image(format="png", width=700, height=320, scale=2)
                 story.append(RLImage(io.BytesIO(png), width=6.0*inch, height=2.7*inch))
                 story.append(Spacer(1, 10))
