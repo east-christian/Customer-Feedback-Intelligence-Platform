@@ -125,7 +125,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def call_llm(prompt, model="gemma2:4b"):
+def call_llm(prompt, model="gemma3:4b"):
     try:
         response = ollama.chat(model=model, messages=[{'role': 'user', 'content': prompt}])
         return response['message']['content']
