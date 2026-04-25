@@ -18,7 +18,6 @@ import ollama
 import ast
 import re
 
-# ReportLab — used only in page_overview for the PDF button
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
@@ -45,10 +44,7 @@ THEMES = [
     "Policies & Safety",
 ]
 
-st.set_page_config(page_title="Feedback Intelligence Platform", layout="wide")
-
-
-# ── Shared helpers ─────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Customer Feedback Intelligence Platform", layout="wide")
 
 COLOUR_MAP = {
     "positive":      "#16a34a",
@@ -63,6 +59,9 @@ def _text_col(df):
             return c
     return "clean_text"
 
+def _csv_hash(df):
+    return hashlib.md5(pd.util.hash_pandas_object(df).values).hexdigest()
+
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
 
@@ -75,11 +74,10 @@ def call_llm(prompt, model="gemma3:4b"):
         raise e
 
 
-# ── Model training / loading ──────────────────────────────────────────────────
+# ── Model ─────────────────────────────────────────────────────────────────────
 
 def ensure_output_dir():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
 
 def sentiments_from_stars(stars, classification_type="three_class"):
     try:
@@ -89,7 +87,6 @@ def sentiments_from_stars(stars, classification_type="three_class"):
     if classification_type == "binary":
         return "positive" if stars >= 4 else ("negative" if stars <= 2 else None)
     return "positive" if stars >= 4 else ("neutral/mixed" if stars == 3 else "negative")
-
 
 def prepare_training_data():
     train_file = DATA_DIR / "training_testing_data.csv"
@@ -101,8 +98,7 @@ def prepare_training_data():
             raise FileNotFoundError("No training CSV found in src/sample_data")
     df = pd.read_csv(train_file)
     if "sentiment" not in df.columns:
-        df["sentiment"] = df["stars"].apply(
-            lambda x: sentiments_from_stars(x, "three_class"))
+        df["sentiment"] = df["stars"].apply(lambda x: sentiments_from_stars(x, "three_class"))
     if "clean_text" not in df.columns:
         if "text" in df.columns:
             df["clean_text"] = df["text"].fillna("").astype(str).str.lower()
@@ -111,7 +107,6 @@ def prepare_training_data():
         else:
             raise ValueError("Training data must contain 'clean_text', 'text', or 'raw_text'")
     return df[df["sentiment"].notna()].copy()
-
 
 def train_model():
     df = prepare_training_data()
@@ -131,7 +126,6 @@ def train_model():
     joblib.dump(vectorizer, VECTORIZER_FILE)
     return model, vectorizer, accuracy
 
-
 @st.cache_resource
 def load_or_train_model():
     ensure_output_dir()
@@ -140,7 +134,7 @@ def load_or_train_model():
     return train_model()
 
 
-# ── Preprocessing & prediction ────────────────────────────────────────────────
+# ── Preprocessing ─────────────────────────────────────────────────────────────
 
 def preprocess_reviews(df):
     if "clean_text" in df.columns:
@@ -153,21 +147,17 @@ def preprocess_reviews(df):
         raise ValueError("CSV must have a 'text', 'raw_text', or 'clean_text' column")
     return df
 
-
 CONTRAST_WORDS = {"but","however","though","although","yet","except","overall","while"}
 POS_CUES = {"good","great","nice","friendly","fast","clean","love","excellent","amazing","enjoy"}
 NEG_CUES = {"bad","slow","rude","wrong","dirty","hate","awful","terrible","issue","problem"}
-
 
 def has_contrast(text):
     t = f" {text.lower()} "
     return any(f" {w} " in t for w in CONTRAST_WORDS)
 
-
 def has_dual_polarity_words(text):
     tokens = set(re.findall(r"[a-z']+", text.lower()))
     return bool(tokens & POS_CUES) and bool(tokens & NEG_CUES)
-
 
 def mixed_rule(row):
     text  = str(row.get("clean_text", ""))
@@ -177,7 +167,6 @@ def mixed_rule(row):
     contrast_cond = has_contrast(text)
     lex_cond      = has_dual_polarity_words(text)
     return (prob_cond and contrast_cond) or (contrast_cond and lex_cond)
-
 
 def predict_reviews(df, model, vectorizer):
     tfidf = vectorizer.transform(df["clean_text"])
@@ -197,33 +186,18 @@ def predict_reviews(df, model, vectorizer):
 # ── Theme extraction ──────────────────────────────────────────────────────────
 
 def build_prompt(batch, themes):
-    numbered = "\n".join([
-        f"Review {i+1}:\n{str(r)[:250]}" for i, r in enumerate(batch)])
+    numbered = "\n".join([f"Review {i+1}:\n{str(r)[:250]}" for i, r in enumerate(batch)])
     return f"""You are a professional theme classifier for customer reviews.
-You work for a Feedback Intelligence Platform that analyzes reviews.
-
 Available themes: {themes}
-
 RULES:
-- Only assign themes from the available list above. NEVER invent or create your own themes.
-- Every review MUST have at least one theme assigned.
-- Return ONLY a valid JSON dictionary where keys are Review Numbers ("1", "2", etc.) and values are arrays of themes.
-- You MUST generate exactly {len(batch)} keys.
-- No extra explanation outside the JSON block.
-
-Example for 3 reviews:
-{{
-  "1": ["Customer Service", "Product Quality"],
-  "2": ["Speed of Service"],
-  "3": ["Price & Value"]
-}}
-
-Reviews to classify:
+- Only assign themes from the available list. NEVER invent themes.
+- Every review MUST have at least one theme.
+- Return ONLY a valid JSON dictionary where keys are Review Numbers and values are arrays of themes.
+- Generate exactly {len(batch)} keys. No extra explanation.
+Example: {{"1": ["Customer Service"], "2": ["Speed of Service", "Price & Value"]}}
+Reviews:
 {numbered}
-
-Return ONLY valid JSON.
-"""
-
+Return ONLY valid JSON."""
 
 def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
     batch_idx, batch = batch_info
@@ -237,7 +211,7 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
                     if any(i != -1 for i in [first_brace, first_brack]) else -1
             end   = max(raw.rfind("}"), raw.rfind("]")) + 1
             if start == -1 or end <= start:
-                raise ValueError("LLM output contained no valid JSON")
+                raise ValueError("No valid JSON in LLM output")
             clean = raw[start:end]
             try:
                 parsed_data = json.loads(clean)
@@ -245,10 +219,7 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
                 try:
                     parsed_data = ast.literal_eval(clean)
                 except Exception:
-                    if clean.strip().startswith("{") and clean.strip().endswith("}"):
-                        parsed_data = json.loads(f"[{clean}]")
-                    else:
-                        raise ValueError(f"Could not parse: {clean}")
+                    raise ValueError(f"Could not parse: {clean}")
             parsed_dict = {}
             if isinstance(parsed_data, list):
                 for item in parsed_data:
@@ -261,27 +232,22 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
             themes = []
             for idx in range(1, len(batch) + 1):
                 t = parsed_dict.get(str(idx), [])
-                if not isinstance(t, list):
-                    t = [t]
-                if not t:
-                    t = ["Customer Service"]
+                if not isinstance(t, list): t = [t]
+                if not t: t = ["Customer Service"]
                 themes.append(t)
             if len(themes) != len(batch):
-                raise ValueError(
-                    f"Count mismatch: got {len(themes)}, expected {len(batch)}")
+                raise ValueError(f"Count mismatch: got {len(themes)}, expected {len(batch)}")
             validated = []
             for tlist in themes:
-                safe  = [str(list(t.values())[0]) if isinstance(t, dict) and t
-                          else str(t) for t in tlist]
+                safe  = [str(list(t.values())[0]) if isinstance(t, dict) and t else str(t) for t in tlist]
                 valid = []
                 for st_t in safe:
                     for real in themes_list:
                         if st_t.strip().lower() == real.lower():
-                            if real not in valid:
-                                valid.append(real)
+                            if real not in valid: valid.append(real)
                             break
                 if not valid:
-                    raise ValueError(f"Hallucination: '{tlist}' not in allowed list")
+                    raise ValueError(f"Hallucination: '{tlist}'")
                 validated.append(valid)
             return batch_idx, batch, validated, "success"
         except Exception as e:
@@ -289,7 +255,6 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
             if attempt < max_retries:
                 time.sleep(2)
     return batch_idx, batch, None, "failed"
-
 
 def extract_themes(df, themes_list, batch_size=30, max_workers=2):
     reviews = df["clean_text"].fillna("").tolist()
@@ -300,34 +265,30 @@ def extract_themes(df, themes_list, batch_size=30, max_workers=2):
     total  = len(batches)
     done   = 0
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = {ex.submit(extract_themes_with_retry, b, themes_list): b
-                   for b in batches}
+        futures = {ex.submit(extract_themes_with_retry, b, themes_list): b for b in batches}
         for future in as_completed(futures):
             try:
                 bidx, batch, bthemes, bstatus = future.result(timeout=180)
             except TimeoutError:
-                bidx, batch = futures[future]
-                bstatus, bthemes = "failed", [["FAILED"]] * len(batch)
+                bidx, batch = futures[future]; bstatus, bthemes = "failed", [["FAILED"]]*len(batch)
             except Exception:
-                bidx, batch = futures[future]
-                bstatus, bthemes = "failed", [["FAILED"]] * len(batch)
+                bidx, batch = futures[future]; bstatus, bthemes = "failed", [["FAILED"]]*len(batch)
             if bstatus == "success":
                 for i, (_, vt) in enumerate(zip(batch, bthemes)):
-                    success.append({"original_idx": bidx + i,
-                                    "themes": ", ".join(vt)})
+                    success.append({"original_idx": bidx+i, "themes": ", ".join(vt)})
             else:
                 for i in range(len(batch)):
-                    failed.append({"original_idx": bidx + i, "themes": "FAILED"})
+                    failed.append({"original_idx": bidx+i, "themes": "FAILED"})
             done += 1
-            if done % max(1, total // 100) == 0 or done == total:
-                pbar.progress(done / total)
+            if done % max(1, total//100) == 0 or done == total:
+                pbar.progress(done/total)
                 status.text(f"Processed batch {done}/{total} — please wait...")
     lookup = {r["original_idx"]: r["themes"] for r in success + failed}
     df["themes"] = [lookup.get(i, "FAILED") for i in range(len(df))]
     before = len(df)
     df = df[~df["themes"].str.contains("FAILED", na=False)]
     if len(df) < before:
-        print(f"Dropped {before - len(df)} reviews due to extraction failure.")
+        print(f"Dropped {before-len(df)} reviews due to extraction failure.")
     pbar.progress(1.0)
     status.text("Theme extraction complete!")
     return df
@@ -336,47 +297,38 @@ def extract_themes(df, themes_list, batch_size=30, max_workers=2):
 # ── AI Executive Summary ───────────────────────────────────────────────────────
 
 def generate_executive_summary(df):
-    """Send key stats to Ollama and get a 3-paragraph plain-English business summary."""
     total    = len(df)
     pos      = int((df["predicted_sentiment"] == "positive").sum())
     neg      = int((df["predicted_sentiment"] == "negative").sum())
     mixed    = int(df["predicted_sentiment"].isin(["neutral","neutral/mixed"]).sum())
     avg_conf = df["confidence"].mean() * 100 if "confidence" in df.columns else None
-
-    top_themes = ""
+    top_themes, top_neg_theme = "", ""
     if "themes" in df.columns:
         exp = df["themes"].str.split(r",\s*").explode().str.strip()
         exp = exp[~exp.isin(["FAILED","","NOT PROCESSED"])]
         top_themes = ", ".join(exp.value_counts().head(5).index.tolist())
-
-    top_neg_theme = ""
-    if "themes" in df.columns:
         neg_df = df[df["predicted_sentiment"] == "negative"]
         if not neg_df.empty:
             neg_exp = neg_df["themes"].str.split(r",\s*").explode().str.strip()
             neg_exp = neg_exp[~neg_exp.isin(["FAILED","","NOT PROCESSED"])]
             if not neg_exp.empty:
                 top_neg_theme = neg_exp.value_counts().idxmax()
-
     prompt = f"""You are a business analyst writing an executive summary for a customer feedback report.
+Statistics:
+- Total reviews: {total}
+- Positive: {pos} ({pos/total*100:.1f}%)
+- Negative: {neg} ({neg/total*100:.1f}%)
+- Neutral/Mixed: {mixed} ({mixed/total*100:.1f}%)
+- Avg model confidence: {f"{avg_conf:.1f}%" if avg_conf else "N/A"}
+- Top themes: {top_themes if top_themes else "N/A"}
+- Top negative theme: {top_neg_theme if top_neg_theme else "N/A"}
 
-Here are the key statistics from the analysis:
-- Total reviews analysed: {total}
-- Positive reviews: {pos} ({pos/total*100:.1f}%)
-- Negative reviews: {neg} ({neg/total*100:.1f}%)
-- Neutral/Mixed reviews: {mixed} ({mixed/total*100:.1f}%)
-- Average model confidence: {f"{avg_conf:.1f}%" if avg_conf else "N/A"}
-- Top mentioned themes: {top_themes if top_themes else "N/A"}
-- Top theme in negative reviews: {top_neg_theme if top_neg_theme else "N/A"}
+Write exactly 3 short paragraphs:
+1. What is going well
+2. What needs attention
+3. What to do next
 
-Write exactly 3 short paragraphs in plain business English:
-1. What is going well (based on positive sentiment and top themes)
-2. What needs attention (based on negative sentiment and top negative theme)
-3. What to do next (concrete actionable recommendations)
-
-Keep each paragraph to 2-3 sentences. Be specific and use the numbers provided.
-Do not use bullet points. Do not add headings. Write in a professional but clear tone."""
-
+2-3 sentences each. Use the numbers. No bullet points. No headings. Professional tone."""
     return call_llm(prompt)
 
 
@@ -385,11 +337,8 @@ Do not use bullet points. Do not add headings. Write in a professional but clear
 METRIC_CSS = """
 <style>
 [data-testid="stMetric"] {
-    background-color: #f8f9fa;
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
-    padding: 16px;
-    min-height: 110px;
+    background-color: #f8f9fa; border: 1px solid #e9ecef;
+    border-radius: 8px; padding: 16px; min-height: 110px;
 }
 [data-testid="stMetricLabel"] { font-size: 13px; font-weight: 600; color: #6b7280; }
 [data-testid="stMetricValue"] { font-size: 28px; font-weight: 700; }
@@ -399,87 +348,121 @@ METRIC_CSS = """
 """
 
 
-# ── Axis / layout helpers ──────────────────────────────────────────────────────
+# ── Chart / axis helpers ───────────────────────────────────────────────────────
 
 def _vertical_bar_axis():
     return dict(
-        xaxis=dict(
-            tickformat=".0%",
-            range=[-0.05, 1.05],
-            tickvals=[i / 10 for i in range(0, 11)],
-            ticktext=[f"{i*10}%" for i in range(0, 11)],
-            title_standoff=10,
-        ),
+        xaxis=dict(tickformat=".0%", range=[-0.05, 1.05],
+                   tickvals=[i/10 for i in range(0,11)],
+                   ticktext=[f"{i*10}%" for i in range(0,11)], title_standoff=10),
         yaxis=dict(rangemode="tozero", dtick=1, tickformat="d"),
     )
 
-
 def _horizontal_bar_axis(max_val):
-    nice_max = max(1, int(max_val) + 1)
-    step = max(1, int(nice_max / 8))
+    nice_max = max(1, int(max_val)+1)
+    step = max(1, int(nice_max/8))
     return dict(
-        xaxis=dict(
-            range=[0, nice_max + step * 0.5],
-            tick0=0, dtick=step, tickformat="d", rangemode="tozero",
-        ),
+        xaxis=dict(range=[0, nice_max+step*0.5], tick0=0, dtick=step,
+                   tickformat="d", rangemode="tozero"),
         yaxis=dict(categoryorder="total ascending"),
     )
 
-
 def _base_layout(**extra):
-    layout = dict(
-        paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=10, r=20, t=45, b=70),
-        bargap=0.2, bargroupgap=0.05,
-    )
+    layout = dict(paper_bgcolor="white", plot_bgcolor="white",
+                  margin=dict(l=10, r=20, t=45, b=70), bargap=0.2, bargroupgap=0.05)
     layout.update(extra)
     return layout
 
-
 def _hist_yaxis(df):
-    """Dynamic y-axis: steps of 20, scales with dataset size, minimum 20."""
     n = len(df)
-    est_max = max(20, n // 4)
-    ceiling = ((est_max // 20) + 1) * 20
+    est_max = max(20, n//4)
+    ceiling = ((est_max//20)+1)*20
     return dict(rangemode="tozero", dtick=20, tickformat="d", range=[0, ceiling])
-
-
-# ── Chart download ─────────────────────────────────────────────────────────────
 
 def _chart_download(fig, filename, label="Download chart as PNG"):
     try:
         png_bytes = fig.to_image(format="png", scale=2)
-        st.download_button(label=label, data=png_bytes,
-                           file_name=filename, mime="image/png")
+        st.download_button(label=label, data=png_bytes, file_name=filename, mime="image/png")
     except Exception:
         st.caption("Install kaleido for chart downloads: pip install kaleido")
 
 
-# ── PDF builder ────────────────────────────────────────────────────────────────
+# ── PDF helpers ────────────────────────────────────────────────────────────────
 
-def _build_overview_pdf(df) -> bytes:
+def _pdf_styles():
+    base = getSampleStyleSheet()
+    HDR  = rl_colors.HexColor("#1e3a5f")
+    return (
+        ParagraphStyle("T",  parent=base["Title"],   fontSize=20, textColor=HDR,
+                       fontName="Helvetica-Bold", spaceAfter=4),
+        ParagraphStyle("S",  parent=base["Normal"],  fontSize=10,
+                       textColor=rl_colors.HexColor("#6b7280"), spaceAfter=14),
+        ParagraphStyle("H2", parent=base["Heading2"],fontSize=13, textColor=HDR,
+                       fontName="Helvetica-Bold", spaceBefore=16, spaceAfter=6),
+        ParagraphStyle("B",  parent=base["Normal"],  fontSize=9, leading=13,
+                       textColor=rl_colors.HexColor("#374151")),
+    )
+
+def _pdf_kpi_table(df, HDR, RULE, BG):
     total    = len(df)
     pos      = int((df["predicted_sentiment"] == "positive").sum())
     neg      = int((df["predicted_sentiment"] == "negative").sum())
     mixed    = int(df["predicted_sentiment"].isin(["neutral","neutral/mixed"]).sum())
-    avg_conf = df["confidence"].mean() * 100 if "confidence" in df.columns else None
+    avg_conf = df["confidence"].mean()*100 if "confidence" in df.columns else None
+    GRN = rl_colors.HexColor("#16a34a")
+    RED = rl_colors.HexColor("#dc2626")
+    rows = [["Metric","Count","Share"],
+            ["Total Reviews", f"{total:,}", "100%"]]
+    if pos   > 0: rows.append(["Positive",        f"{pos:,}",   f"{pos/total*100:.1f}%"])
+    if neg   > 0: rows.append(["Negative",         f"{neg:,}",   f"{neg/total*100:.1f}%"])
+    if mixed > 0: rows.append(["Neutral / Mixed",  f"{mixed:,}", f"{mixed/total*100:.1f}%"])
+    if avg_conf:   rows.append(["Avg Confidence",  f"{avg_conf:.1f}%", "—"])
+    tbl = Table(rows, colWidths=[3.0*inch, 1.5*inch, 1.5*inch])
+    style = [
+        ("BACKGROUND",    (0,0),(-1,0),BG), ("TEXTCOLOR",(0,0),(-1,0),HDR),
+        ("FONTNAME",      (0,0),(-1,0),"Helvetica-Bold"), ("FONTSIZE",(0,0),(-1,0),9),
+        ("FONTNAME",      (0,1),(-1,-1),"Helvetica"), ("FONTSIZE",(0,1),(-1,-1),9),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[rl_colors.white, rl_colors.HexColor("#f9fafb")]),
+        ("TEXTCOLOR",     (0,1),(-1,-1),rl_colors.HexColor("#374151")),
+        ("GRID",          (0,0),(-1,-1),0.4,RULE),
+        ("TOPPADDING",    (0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("LEFTPADDING",   (0,0),(-1,-1),8),
+    ]
+    if pos > 0: style.append(("TEXTCOLOR",(2,2),(2,2),GRN))
+    if neg > 0: style.append(("TEXTCOLOR",(2,3),(2,3),RED))
+    tbl.setStyle(TableStyle(style))
+    return tbl
 
+def _pdf_theme_table(df, HDR, RULE, BG, body_s):
+    exp_all = df["themes"].str.split(r",\s*").explode().str.strip()
+    exp_all = exp_all[~exp_all.isin(["FAILED","","NOT PROCESSED"])]
+    if exp_all.empty:
+        return Paragraph("No theme data available for selected filters.", body_s)
+    tc = exp_all.value_counts().head(8).reset_index()
+    tc.columns = ["Theme","Mentions"]
+    theme_rows = [["Theme","Mentions"]] + [[str(c) for c in row] for row in tc.values.tolist()]
+    tbl = Table(theme_rows, colWidths=[4.0*inch, 2.0*inch])
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0),(-1,0),BG), ("TEXTCOLOR",(0,0),(-1,0),HDR),
+        ("FONTNAME",      (0,0),(-1,0),"Helvetica-Bold"), ("FONTSIZE",(0,0),(-1,0),9),
+        ("FONTNAME",      (0,1),(-1,-1),"Helvetica"), ("FONTSIZE",(0,1),(-1,-1),9),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[rl_colors.white, rl_colors.HexColor("#f9fafb")]),
+        ("TEXTCOLOR",     (0,1),(-1,-1),rl_colors.HexColor("#374151")),
+        ("GRID",          (0,0),(-1,-1),0.4,RULE),
+        ("TOPPADDING",    (0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("LEFTPADDING",   (0,0),(-1,-1),8),
+    ]))
+    return tbl
+
+
+def build_custom_pdf(df, report_title="Customer Feedback Report",
+                     inc_kpi=True, inc_pie=True,
+                     inc_trend=True, inc_themes=True) -> bytes:
     HDR  = rl_colors.HexColor("#1e3a5f")
     RULE = rl_colors.HexColor("#e5e7eb")
     BG   = rl_colors.HexColor("#f0f4ff")
-    GRN  = rl_colors.HexColor("#16a34a")
-    RED  = rl_colors.HexColor("#dc2626")
 
-    base    = getSampleStyleSheet()
-    title_s = ParagraphStyle("T",  parent=base["Title"],   fontSize=20,
-                              textColor=HDR, fontName="Helvetica-Bold", spaceAfter=4)
-    sub_s   = ParagraphStyle("S",  parent=base["Normal"],  fontSize=10,
-                              textColor=rl_colors.HexColor("#6b7280"), spaceAfter=14)
-    h2_s    = ParagraphStyle("H2", parent=base["Heading2"],fontSize=13,
-                              textColor=HDR, fontName="Helvetica-Bold",
-                              spaceBefore=16, spaceAfter=6)
-    body_s  = ParagraphStyle("B",  parent=base["Normal"],  fontSize=9,
-                              leading=13, textColor=rl_colors.HexColor("#374151"))
+    title_s, sub_s, h2_s, body_s = _pdf_styles()
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter,
@@ -487,115 +470,59 @@ def _build_overview_pdf(df) -> bytes:
                             topMargin=0.85*inch,  bottomMargin=0.75*inch)
     story = []
 
-    story.append(Paragraph("Customer Feedback Report", title_s))
+    sentiments_shown = ", ".join(s.capitalize() for s in
+                                  df["predicted_sentiment"].unique().tolist())
+    story.append(Paragraph(report_title, title_s))
     story.append(Paragraph(
         f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}  |  "
-        f"{total:,} reviews analysed", sub_s))
+        f"{len(df):,} reviews  |  Sentiments: {sentiments_shown}", sub_s))
     story.append(HRFlowable(width="100%", thickness=1, color=RULE, spaceAfter=12))
 
-    story.append(Paragraph("Summary Metrics", h2_s))
-    kpi_rows = [
-        ["Metric",           "Count",        "Share"],
-        ["Total Reviews",    f"{total:,}",   "100%"],
-        ["Positive",         f"{pos:,}",     f"{pos/total*100:.1f}%"],
-        ["Negative",         f"{neg:,}",     f"{neg/total*100:.1f}%"],
-        ["Neutral / Mixed",  f"{mixed:,}",   f"{mixed/total*100:.1f}%"],
-    ]
-    if avg_conf is not None:
-        kpi_rows.append(["Avg Model Confidence", f"{avg_conf:.1f}%", "—"])
+    if inc_kpi:
+        story.append(Paragraph("Summary Metrics", h2_s))
+        story.append(_pdf_kpi_table(df, HDR, RULE, BG))
+        story.append(Spacer(1, 14))
 
-    kpi_tbl = Table(kpi_rows, colWidths=[3.0*inch, 1.5*inch, 1.5*inch])
-    kpi_tbl.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, 0), BG),
-        ("TEXTCOLOR",     (0, 0), (-1, 0), HDR),
-        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE",      (0, 0), (-1, 0), 9),
-        ("FONTNAME",      (0, 1), (-1,-1), "Helvetica"),
-        ("FONTSIZE",      (0, 1), (-1,-1), 9),
-        ("ROWBACKGROUNDS",(0, 1), (-1,-1),
-         [rl_colors.white, rl_colors.HexColor("#f9fafb")]),
-        ("TEXTCOLOR",     (0, 1), (-1,-1), rl_colors.HexColor("#374151")),
-        ("TEXTCOLOR",     (2, 2), (2, 2),  GRN),
-        ("TEXTCOLOR",     (2, 3), (2, 3),  RED),
-        ("GRID",          (0, 0), (-1,-1), 0.4, RULE),
-        ("TOPPADDING",    (0, 0), (-1,-1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1,-1), 5),
-        ("LEFTPADDING",   (0, 0), (-1,-1), 8),
-    ]))
-    story.append(kpi_tbl)
-    story.append(Spacer(1, 14))
+    if inc_pie:
+        story.append(Paragraph("Sentiment Distribution", h2_s))
+        try:
+            counts = df["predicted_sentiment"].value_counts().reset_index()
+            counts.columns = ["sentiment","count"]
+            fig_pie = px.pie(counts, names="sentiment", values="count",
+                             color="sentiment", color_discrete_map=COLOUR_MAP)
+            fig_pie.update_layout(margin=dict(l=10,r=10,t=10,b=10), paper_bgcolor="white")
+            png_pie = fig_pie.to_image(format="png", width=500, height=320, scale=2)
+            story.append(RLImage(io.BytesIO(png_pie), width=4.5*inch, height=2.9*inch))
+        except Exception as e:
+            story.append(Paragraph(f"Pie chart unavailable: {e}", body_s))
 
-    story.append(Paragraph("Sentiment Distribution", h2_s))
-    try:
-        counts = df["predicted_sentiment"].value_counts().reset_index()
-        counts.columns = ["sentiment", "count"]
-        fig_pie = px.pie(counts, names="sentiment", values="count",
-                         color="sentiment", color_discrete_map=COLOUR_MAP)
-        fig_pie.update_layout(margin=dict(l=10, r=10, t=10, b=10),
-                              paper_bgcolor="white")
-        png_pie = fig_pie.to_image(format="png", width=500, height=320, scale=2)
-        story.append(RLImage(io.BytesIO(png_pie), width=4.5*inch, height=2.9*inch))
-    except Exception as e:
-        story.append(Paragraph(
-            f"Pie chart unavailable ({e}). Run: pip install kaleido", body_s))
-
-    if "date" in df.columns:
+    if inc_trend and "date" in df.columns:
         story.append(Spacer(1, 10))
         story.append(Paragraph("Sentiment Over Time", h2_s))
         try:
-            d = df.copy()
+            d  = df.copy()
             d["date"] = pd.to_datetime(d["date"])
             td = (d.groupby([pd.Grouper(key="date", freq="ME"), "predicted_sentiment"])
                    .size().reset_index(name="count"))
             if len(td) > 1:
-                fig_trend = px.line(td, x="date", y="count",
-                                    color="predicted_sentiment",
-                                    color_discrete_map=COLOUR_MAP)
-                fig_trend.update_layout(
-                    margin=dict(l=60, r=20, t=20, b=50),
-                    paper_bgcolor="white",
-                    xaxis_title="Date",
-                    yaxis_title="Number of Reviews",
-                    yaxis=dict(rangemode="tozero", range=[0, None],
-                               dtick=1, tickformat="d"),
-                    legend_title_text="Sentiment",
-                )
-                png_trend = fig_trend.to_image(
-                    format="png", width=700, height=320, scale=2)
-                story.append(RLImage(io.BytesIO(png_trend),
-                                     width=6.0*inch, height=2.7*inch))
+                fig_t = px.line(td, x="date", y="count", color="predicted_sentiment",
+                                color_discrete_map=COLOUR_MAP)
+                fig_t.update_layout(
+                    margin=dict(l=60,r=20,t=20,b=50), paper_bgcolor="white",
+                    xaxis_title="Date", yaxis_title="Number of Reviews",
+                    yaxis=dict(rangemode="tozero", range=[0,None], dtick=1, tickformat="d"),
+                    legend_title_text="Sentiment")
+                png_t = fig_t.to_image(format="png", width=700, height=320, scale=2)
+                story.append(RLImage(io.BytesIO(png_t), width=6.0*inch, height=2.7*inch))
             else:
-                story.append(Paragraph(
-                    "Not enough date range for a trend chart.", body_s))
+                story.append(Paragraph("Not enough date range for a trend chart.", body_s))
         except Exception as e:
             story.append(Paragraph(f"Trend chart unavailable: {e}", body_s))
 
-    if "themes" in df.columns:
+    if inc_themes and "themes" in df.columns:
         story.append(Spacer(1, 10))
         story.append(Paragraph("Top Themes", h2_s))
-        exp_all = df["themes"].str.split(r",\s*").explode().str.strip()
-        exp_all = exp_all[~exp_all.isin(["FAILED", "", "NOT PROCESSED"])]
-        tc = exp_all.value_counts().head(8).reset_index()
-        tc.columns = ["Theme", "Mentions"]
-        theme_rows = [["Theme", "Mentions"]] + [[str(c) for c in row]
-                       for row in tc.values.tolist()]
-        theme_tbl = Table(theme_rows, colWidths=[4.0*inch, 2.0*inch])
-        theme_tbl.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, 0), BG),
-            ("TEXTCOLOR",     (0, 0), (-1, 0), HDR),
-            ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE",      (0, 0), (-1, 0), 9),
-            ("FONTNAME",      (0, 1), (-1,-1), "Helvetica"),
-            ("FONTSIZE",      (0, 1), (-1,-1), 9),
-            ("ROWBACKGROUNDS",(0, 1), (-1,-1),
-             [rl_colors.white, rl_colors.HexColor("#f9fafb")]),
-            ("TEXTCOLOR",     (0, 1), (-1,-1), rl_colors.HexColor("#374151")),
-            ("GRID",          (0, 0), (-1,-1), 0.4, RULE),
-            ("TOPPADDING",    (0, 0), (-1,-1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1,-1), 5),
-            ("LEFTPADDING",   (0, 0), (-1,-1), 8),
-        ]))
-        story.append(theme_tbl)
+        story.append(_pdf_theme_table(df, HDR, RULE, BG, body_s))
 
     doc.build(story)
     return buf.getvalue()
@@ -610,34 +537,31 @@ def page_overview(df):
 
     # ── AI Executive Summary ───────────────────────────────────────────────────
     st.markdown("### Executive Summary")
-    sum_key = "exec_summary"
     if st.button("Generate AI Summary", key="gen_summary"):
         with st.spinner("Asking AI to analyse results..."):
             try:
                 summary = generate_executive_summary(df)
-                st.session_state[sum_key] = summary
+                st.session_state["exec_summary"] = summary
             except Exception as e:
                 st.error(f"Could not generate summary: {e}")
-                st.info("Make sure Ollama is running: ollama run gemma2:9b")
+                st.info("Make sure Ollama is running: ollama run gemma3:4b")
 
-    if sum_key in st.session_state:
+    if "exec_summary" in st.session_state:
         paragraphs = [p.strip() for p in
-                      st.session_state[sum_key].split("\n\n") if p.strip()]
-        labels = ["What is going well", "What needs attention", "What to do next"]
-        colors_box = ["#f0fdf4", "#fef2f2", "#eff6ff"]
-        border_colors = ["#16a34a", "#dc2626", "#2563eb"]
+                      st.session_state["exec_summary"].split("\n\n") if p.strip()]
+        labels  = ["What is going well", "What needs attention", "What to do next"]
+        bgs     = ["#f0fdf4", "#fef2f2", "#eff6ff"]
+        borders = ["#16a34a", "#dc2626", "#2563eb"]
         for i, para in enumerate(paragraphs[:3]):
             label = labels[i] if i < len(labels) else f"Point {i+1}"
-            bg    = colors_box[i] if i < len(colors_box) else "#f9fafb"
-            bdr   = border_colors[i] if i < len(border_colors) else "#6b7280"
+            bg    = bgs[i]    if i < len(bgs)    else "#f9fafb"
+            bdr   = borders[i] if i < len(borders) else "#6b7280"
             st.markdown(
                 f'<div style="background:{bg}; border-left:4px solid {bdr}; '
                 f'padding:14px 18px; border-radius:6px; margin-bottom:10px;">'
                 f'<strong style="color:{bdr};">{label}</strong><br>'
                 f'<span style="font-size:14px; color:#374151;">{para}</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+                f'</div>', unsafe_allow_html=True)
     else:
         st.caption("Click Generate AI Summary to get an AI-written analysis of the results.")
 
@@ -652,20 +576,15 @@ def page_overview(df):
             if min_date < max_date:
                 st.markdown("**Filter by date range**")
                 date_range = st.slider(
-                    "Select date range:",
-                    min_value=min_date,
-                    max_value=max_date,
-                    value=(min_date, max_date),
-                    format="MMM YYYY",
-                    key="date_slider_overview",
-                )
+                    "Select date range:", min_value=min_date, max_value=max_date,
+                    value=(min_date, max_date), format="MMM YYYY",
+                    key="date_slider_overview")
                 df = df[(df["date"].dt.date >= date_range[0]) &
                         (df["date"].dt.date <= date_range[1])]
                 st.caption(
                     f"Showing {len(df):,} reviews from "
                     f"{date_range[0].strftime('%b %Y')} to "
-                    f"{date_range[1].strftime('%b %Y')}"
-                )
+                    f"{date_range[1].strftime('%b %Y')}")
         except Exception:
             pass
 
@@ -677,38 +596,32 @@ def page_overview(df):
     avg_conf = df["confidence"].mean() if "confidence" in df.columns else None
 
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total Reviews",   f"{total:,}",                      "100% of reviews")
-    c2.metric("Positive",        f"{pos:,}",                        f"{pos/total*100:.1f}% of reviews")
-    c3.metric("Negative",        f"{neg:,}",                        f"{neg/total*100:.1f}% of reviews")
-    c4.metric("Neutral / Mixed", f"{mixed:,}",                      f"{mixed/total*100:.1f}% of reviews")
+    c1.metric("Total Reviews",   f"{total:,}",                    "100% of reviews")
+    c2.metric("Positive",        f"{pos:,}",                      f"{pos/total*100:.1f}% of reviews")
+    c3.metric("Negative",        f"{neg:,}",                      f"{neg/total*100:.1f}% of reviews")
+    c4.metric("Neutral / Mixed", f"{mixed:,}",                    f"{mixed/total*100:.1f}% of reviews")
     c5.metric("Avg Confidence",  f"{avg_conf*100:.1f}%" if avg_conf else "N/A", "model certainty")
 
     st.markdown("---")
 
     # ── Keyword search ─────────────────────────────────────────────────────────
     st.markdown("**Keyword Search**")
-    keyword = st.text_input(
-        "Search reviews for a keyword or phrase:",
-        placeholder="e.g. wait, rude, coffee, parking...",
-        key="keyword_overview",
-    )
+    keyword = st.text_input("Search reviews for a keyword or phrase:",
+                            placeholder="e.g. wait, rude, coffee, parking...",
+                            key="keyword_overview")
     if keyword.strip():
-        tc_name    = _text_col(df)
-        mask       = df[tc_name].str.contains(keyword.strip(), case=False, na=False)
-        kw_df      = df[mask]
-        st.markdown(
-            f"**{len(kw_df):,} reviews** contain the word "
-            f"**'{keyword.strip()}'**"
-        )
+        tc_name = _text_col(df)
+        mask    = df[tc_name].str.contains(keyword.strip(), case=False, na=False)
+        kw_df   = df[mask]
+        st.markdown(f"**{len(kw_df):,} reviews** contain the word **'{keyword.strip()}'**")
         if not kw_df.empty:
             kw_counts = kw_df["predicted_sentiment"].value_counts().reset_index()
-            kw_counts.columns = ["sentiment", "count"]
+            kw_counts.columns = ["sentiment","count"]
             fig_kw = px.pie(kw_counts, names="sentiment", values="count",
                             title=f"Sentiment for reviews mentioning '{keyword.strip()}'",
                             color="sentiment", color_discrete_map=COLOUR_MAP)
             st.plotly_chart(fig_kw, use_container_width=True)
-            _chart_download(fig_kw, "keyword_sentiment.png",
-                            "Download keyword sentiment chart")
+            _chart_download(fig_kw, "keyword_sentiment.png", "Download keyword sentiment chart")
             with st.expander(f"Show matching reviews ({len(kw_df)})"):
                 show_cols = [tc_name, "predicted_sentiment", "confidence"] + \
                             [c for c in ["themes"] if c in kw_df.columns]
@@ -717,7 +630,7 @@ def page_overview(df):
 
     # ── Pie chart ──────────────────────────────────────────────────────────────
     counts = df["predicted_sentiment"].value_counts().reset_index()
-    counts.columns = ["sentiment", "count"]
+    counts.columns = ["sentiment","count"]
     fig_pie = px.pie(counts, names="sentiment", values="count",
                      title="Predicted Sentiment Distribution",
                      color="sentiment", color_discrete_map=COLOUR_MAP)
@@ -730,17 +643,12 @@ def page_overview(df):
             td = (df.groupby([pd.Grouper(key="date", freq="ME"), "predicted_sentiment"])
                     .size().reset_index(name="count"))
             if len(td) > 1:
-                fig_trend = px.line(td, x="date", y="count",
-                                    color="predicted_sentiment",
-                                    title="Sentiment Over Time",
-                                    color_discrete_map=COLOUR_MAP)
+                fig_trend = px.line(td, x="date", y="count", color="predicted_sentiment",
+                                    title="Sentiment Over Time", color_discrete_map=COLOUR_MAP)
                 fig_trend.update_layout(**_base_layout(
-                    xaxis_title="Date",
-                    yaxis_title="Number of Reviews",
+                    xaxis_title="Date", yaxis_title="Number of Reviews",
                     legend_title_text="Sentiment",
-                    yaxis=dict(rangemode="tozero", range=[0, None],
-                               dtick=1, tickformat="d"),
-                ))
+                    yaxis=dict(rangemode="tozero", range=[0,None], dtick=1, tickformat="d")))
                 st.plotly_chart(fig_trend, use_container_width=True)
                 _chart_download(fig_trend, "sentiment_trend.png", "Download trend chart")
             else:
@@ -755,38 +663,83 @@ def page_overview(df):
                     if c in df.columns]
     st.dataframe(df[preview_cols].head(10), use_container_width=True)
 
-    # ── Downloads ──────────────────────────────────────────────────────────────
+    # ── Customizable Report Builder ────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("**Download**")
-    col_csv, col_pdf = st.columns(2)
+    st.markdown("### Download Report")
+    st.write("Select what to include in your PDF report before downloading.")
 
-    with col_csv:
-        st.download_button(
-            label="Download CSV",
-            data=df.to_csv(index=False),
-            file_name=f"analysis_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-            mime="text/csv",
-            key="dl_csv_overview",
-        )
+    with st.expander("Report Options", expanded=True):
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            st.markdown("**Sentiment Filter**")
+            inc_positive = st.checkbox("Include Positive Reviews",      value=True)
+            inc_negative = st.checkbox("Include Negative Reviews",      value=True)
+            inc_neutral  = st.checkbox("Include Neutral / Mixed Reviews", value=True)
+            st.markdown("**Sections to include**")
+            inc_kpi    = st.checkbox("Summary Metrics table",           value=True)
+            inc_pie    = st.checkbox("Sentiment pie chart",             value=True)
+            inc_trend  = st.checkbox("Sentiment over time chart",       value=True)
+            inc_themes = st.checkbox("Top themes table",                value=True)
 
-    with col_pdf:
-        if st.button("Generate PDF Report", key="gen_pdf_overview"):
-            with st.spinner("Building report..."):
+        with rc2:
+            st.markdown("**Date Range Filter**")
+            use_date_filter = False
+            if "date" in df.columns:
                 try:
-                    st.session_state["pdf_bytes_overview"] = _build_overview_pdf(df)
-                except Exception as e:
-                    st.error(f"PDF generation failed: {e}")
-                    st.info("Run: pip install reportlab kaleido")
+                    min_d = df["date"].min().date()
+                    max_d = df["date"].max().date()
+                    report_dates = st.slider(
+                        "Include reviews from:",
+                        min_value=min_d, max_value=max_d,
+                        value=(min_d, max_d), format="MMM YYYY",
+                        key="report_date_slider")
+                    use_date_filter = True
+                except Exception:
+                    st.info("Date column could not be parsed.")
+            else:
+                st.info("No date column in your CSV — date filter not available.")
 
-        if "pdf_bytes_overview" in st.session_state:
-            st.download_button(
-                label="Download PDF Report",
-                data=st.session_state["pdf_bytes_overview"],
-                file_name=f"overview_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                mime="application/pdf",
-                key="dl_pdf_overview",
-            )
-            st.success("PDF ready — click Download PDF Report above.")
+            st.markdown("**Report Title**")
+            report_title = st.text_input(
+                "Title shown on the report:",
+                value="Customer Feedback Report",
+                key="report_title_custom")
+
+    if st.button("Generate PDF Report", key="gen_pdf_overview"):
+        with st.spinner("Building your custom report..."):
+            try:
+                report_df = df.copy()
+                if use_date_filter and "date" in report_df.columns:
+                    report_df = report_df[
+                        (report_df["date"].dt.date >= report_dates[0]) &
+                        (report_df["date"].dt.date <= report_dates[1])]
+                keep = []
+                if inc_positive: keep.append("positive")
+                if inc_negative: keep.append("negative")
+                if inc_neutral:  keep.extend(["neutral","neutral/mixed"])
+                if keep:
+                    report_df = report_df[report_df["predicted_sentiment"].isin(keep)]
+                if report_df.empty:
+                    st.error("No reviews match your filters. Adjust options and try again.")
+                else:
+                    pdf_bytes = build_custom_pdf(
+                        report_df, report_title=report_title,
+                        inc_kpi=inc_kpi, inc_pie=inc_pie,
+                        inc_trend=inc_trend, inc_themes=inc_themes)
+                    st.session_state["pdf_bytes_overview"]  = pdf_bytes
+                    st.session_state["pdf_review_count"]    = len(report_df)
+            except Exception as e:
+                st.error(f"PDF generation failed: {e}")
+                st.info("Run: pip install reportlab kaleido")
+
+    if "pdf_bytes_overview" in st.session_state:
+        st.success(f"Report ready — {st.session_state.get('pdf_review_count','?')} reviews included.")
+        st.download_button(
+            label="Download PDF Report",
+            data=st.session_state["pdf_bytes_overview"],
+            file_name=f"feedback_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            key="dl_pdf_overview")
 
 
 def page_positive(df):
@@ -805,13 +758,10 @@ def page_positive(df):
         fig_hist.update_layout(**_base_layout(
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
-            xaxis=dict(
-                tickformat=".0%", range=[-0.05, 1.05],
-                tickvals=[i/10 for i in range(0, 11)],
-                ticktext=[f"{i*10}%" for i in range(0, 11)],
-            ),
-            yaxis=_hist_yaxis(pos_df),
-        ))
+            xaxis=dict(tickformat=".0%", range=[-0.05,1.05],
+                       tickvals=[i/10 for i in range(0,11)],
+                       ticktext=[f"{i*10}%" for i in range(0,11)]),
+            yaxis=_hist_yaxis(pos_df)))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "positive_confidence.png", "Download confidence chart")
 
@@ -819,8 +769,7 @@ def page_positive(df):
         st.markdown("**Most mentioned themes in positive reviews**")
         exp = pos_df["themes"].str.split(r",\s*").explode().str.strip()
         exp = exp[~exp.isin(["FAILED","","NOT PROCESSED"])]
-        tc  = exp.value_counts().head(8).reset_index()
-        tc.columns = ["Theme","Count"]
+        tc  = exp.value_counts().head(8).reset_index(); tc.columns = ["Theme","Count"]
         fig_bar = px.bar(tc, x="Count", y="Theme", orientation="h",
                          color_discrete_sequence=["#16a34a"])
         fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
@@ -832,9 +781,8 @@ def page_positive(df):
 
     st.markdown("**Sample positive reviews**")
     tc_name = _text_col(pos_df)
-    hc, bc  = st.columns([3, 1])
-    with bc:
-        st.button("Refresh", key="pos_refresh")
+    hc, bc  = st.columns([3,1])
+    with bc: st.button("Refresh", key="pos_refresh")
     for _, row in pos_df.sample(min(10, len(pos_df))).iterrows():
         conf = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
         st.success(f'"{row[tc_name]}"{conf}')
@@ -856,13 +804,10 @@ def page_negative(df):
         fig_hist.update_layout(**_base_layout(
             xaxis_title="Model Confidence Score (higher = more certain)",
             yaxis_title="Number of Reviews",
-            xaxis=dict(
-                tickformat=".0%", range=[-0.05, 1.05],
-                tickvals=[i/10 for i in range(0, 11)],
-                ticktext=[f"{i*10}%" for i in range(0, 11)],
-            ),
-            yaxis=_hist_yaxis(neg_df),
-        ))
+            xaxis=dict(tickformat=".0%", range=[-0.05,1.05],
+                       tickvals=[i/10 for i in range(0,11)],
+                       ticktext=[f"{i*10}%" for i in range(0,11)]),
+            yaxis=_hist_yaxis(neg_df)))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "negative_confidence.png", "Download confidence chart")
 
@@ -870,8 +815,7 @@ def page_negative(df):
         st.markdown("**Most mentioned themes in negative reviews**")
         exp = neg_df["themes"].str.split(r",\s*").explode().str.strip()
         exp = exp[~exp.isin(["FAILED","","NOT PROCESSED"])]
-        tc  = exp.value_counts().head(8).reset_index()
-        tc.columns = ["Theme","Count"]
+        tc  = exp.value_counts().head(8).reset_index(); tc.columns = ["Theme","Count"]
         fig_bar = px.bar(tc, x="Count", y="Theme", orientation="h",
                          color_discrete_sequence=["#dc2626"])
         fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
@@ -883,9 +827,8 @@ def page_negative(df):
 
     st.markdown("**Sample negative reviews**")
     tc_name = _text_col(neg_df)
-    hc, bc  = st.columns([3, 1])
-    with bc:
-        st.button("Refresh", key="neg_refresh")
+    hc, bc  = st.columns([3,1])
+    with bc: st.button("Refresh", key="neg_refresh")
     for _, row in neg_df.sample(min(10, len(neg_df))).iterrows():
         conf = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
         st.error(f'"{row[tc_name]}"{conf}')
@@ -894,10 +837,9 @@ def page_negative(df):
 def page_neutral(df):
     neu_df = df[df["predicted_sentiment"].isin(["neutral","neutral/mixed"])].copy()
     st.markdown(f"### Neutral / Mixed Reviews — {len(neu_df):,} total")
-    st.write("These reviews sit in the middle — the model did not detect a clearly "
-             "positive or negative tone.")
+    st.write("These reviews sit in the middle — the model did not detect a clearly positive or negative tone.")
     if neu_df.empty:
-        st.info("No neutral or mixed reviews found in this dataset.")
+        st.info("No neutral or mixed reviews found.")
         return
 
     if "confidence" in neu_df.columns:
@@ -909,13 +851,10 @@ def page_neutral(df):
         fig_hist.update_layout(**_base_layout(
             xaxis_title="Model Confidence Score (higher = more certain it is neutral)",
             yaxis_title="Number of Reviews",
-            xaxis=dict(
-                tickformat=".0%", range=[-0.05, 1.05],
-                tickvals=[i/10 for i in range(0, 11)],
-                ticktext=[f"{i*10}%" for i in range(0, 11)],
-            ),
-            yaxis=_hist_yaxis(neu_df),
-        ))
+            xaxis=dict(tickformat=".0%", range=[-0.05,1.05],
+                       tickvals=[i/10 for i in range(0,11)],
+                       ticktext=[f"{i*10}%" for i in range(0,11)]),
+            yaxis=_hist_yaxis(neu_df)))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "neutral_confidence.png", "Download confidence chart")
 
@@ -934,8 +873,7 @@ def page_neutral(df):
         st.markdown("**Most mentioned themes in neutral / mixed reviews**")
         exp = neu_df["themes"].str.split(r",\s*").explode().str.strip()
         exp = exp[~exp.isin(["FAILED","","NOT PROCESSED"])]
-        tc  = exp.value_counts().head(8).reset_index()
-        tc.columns = ["Theme","Count"]
+        tc  = exp.value_counts().head(8).reset_index(); tc.columns = ["Theme","Count"]
         fig_bar = px.bar(tc, x="Count", y="Theme", orientation="h",
                          color_discrete_sequence=["#6b7280"])
         fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
@@ -947,9 +885,8 @@ def page_neutral(df):
 
     st.markdown("**Sample neutral / mixed reviews**")
     tc_name = _text_col(neu_df)
-    hc, bc  = st.columns([3, 1])
-    with bc:
-        st.button("Refresh", key="neu_refresh")
+    hc, bc  = st.columns([3,1])
+    with bc: st.button("Refresh", key="neu_refresh")
     for _, row in neu_df.sample(min(10, len(neu_df))).iterrows():
         conf  = f" *(confidence: {row['confidence']*100:.0f}%)*" if "confidence" in row else ""
         label = "Mixed" if ("is_mixed" in row and row["is_mixed"]) else "Neutral"
@@ -961,13 +898,9 @@ def page_themes(df):
         st.warning("No themes column found. Run the analysis pipeline first.")
         return
 
-    # ── Keyword search inside themes ───────────────────────────────────────────
     st.markdown("**Keyword Search**")
-    kw = st.text_input(
-        "Search reviews for a keyword:",
-        placeholder="e.g. wait, rude, coffee...",
-        key="keyword_themes",
-    )
+    kw = st.text_input("Search reviews for a keyword:",
+                       placeholder="e.g. wait, rude, coffee...", key="keyword_themes")
     if kw.strip():
         tc_name = _text_col(df)
         mask    = df[tc_name].str.contains(kw.strip(), case=False, na=False)
@@ -982,8 +915,7 @@ def page_themes(df):
                             title=f"Themes for reviews mentioning '{kw.strip()}'",
                             color_discrete_sequence=["#065a82"])
             fig_kw.update_traces(marker_line_color="white", marker_line_width=1)
-            fig_kw.update_layout(**_base_layout(
-                **_horizontal_bar_axis(kw_tc["Count"].max())))
+            fig_kw.update_layout(**_base_layout(**_horizontal_bar_axis(kw_tc["Count"].max())))
             st.plotly_chart(fig_kw, use_container_width=True)
         st.markdown("---")
 
@@ -1014,13 +946,11 @@ def page_themes(df):
     if not df_exp.empty:
         pivot = pd.crosstab(df_exp["Theme"], df_exp["predicted_sentiment"],
                             margins=True, margins_name="Total")
-        scols = [c for c in ["positive","negative","neutral","neutral/mixed"]
-                 if c in pivot.columns]
+        scols = [c for c in ["positive","negative","neutral","neutral/mixed"] if c in pivot.columns]
         for c in scols:
             pivot[c+" (%)"] = (pivot[c] / pivot["Total"] * 100).round(1)
         ordered = []
-        for c in scols:
-            ordered.extend([c, c+" (%)"])
+        for c in scols: ordered.extend([c, c+" (%)"])
         ordered.append("Total")
         st.dataframe(pivot[ordered], use_container_width=True)
 
@@ -1049,8 +979,7 @@ def page_themes(df):
             sent_docs = df_exp.groupby("Theme")["clean_text"].apply(
                 lambda x: " ".join(x.dropna())).to_dict()
             if selected in sent_docs and sent_docs[selected].strip():
-                extra_stop = {"review","user","star","stars","https","http",
-                               "amp","just","like","im"}
+                extra_stop = {"review","user","star","stars","https","http","amp","just","like","im"}
                 sw  = list(set(sk_text.ENGLISH_STOP_WORDS) | extra_stop)
                 tv  = TfidfVectorizer(ngram_range=(2,3), stop_words=sw)
                 mat = tv.fit_transform(list(sent_docs.values()))
@@ -1060,13 +989,11 @@ def page_themes(df):
                 top_i  = scores.argsort()[-10:][::-1]
                 phrases = [tv.get_feature_names_out()[i] for i in top_i if scores[i] > 0]
                 pcounts = [sent_docs[selected].count(p) for p in phrases]
-                pf = pd.DataFrame({"Phrase":phrases,"Count":pcounts})\
-                       .sort_values("Count", ascending=True)
+                pf = pd.DataFrame({"Phrase":phrases,"Count":pcounts}).sort_values("Count",ascending=True)
                 fig3 = px.bar(pf, x="Count", y="Phrase", orientation="h")
                 fig3.update_traces(marker_line_color="white", marker_line_width=1)
-                fig3.update_layout(**_base_layout(
-                    xaxis_title="Mentions", yaxis_title="",
-                    **_horizontal_bar_axis(pf["Count"].max())))
+                fig3.update_layout(**_base_layout(xaxis_title="Mentions", yaxis_title="",
+                                                   **_horizontal_bar_axis(pf["Count"].max())))
                 st.plotly_chart(fig3, use_container_width=True)
         except Exception as e:
             st.info(f"Could not extract phrases: {e}")
@@ -1075,40 +1002,29 @@ def page_themes(df):
             st.markdown("---")
             st.subheader("Time-Based & Emergent Trends")
             try:
-                theme_time = (
-                    df_exp.groupby([pd.Grouper(key="date", freq="ME"), "Theme"])
-                    .size().reset_index(name="count")
-                )
+                theme_time = (df_exp.groupby([pd.Grouper(key="date", freq="ME"), "Theme"])
+                              .size().reset_index(name="count"))
                 if len(theme_time["date"].unique()) > 1:
                     st.markdown(f"**Monthly volume for '{selected}'**")
                     sel_tt  = theme_time[theme_time["Theme"] == selected]
                     n_bars  = len(sel_tt)
                     chart_w = max(900, n_bars * 55)
-
                     fig_t = px.bar(sel_tt, x="date", y="count",
                                    labels={"date":"Month","count":"Mentions"})
-                    fig_t.update_traces(
-                        marker_color="#065a82",
-                        marker_line_color="white",
-                        marker_line_width=2,
-                        width=1000 * 60 * 60 * 24 * 20,
-                    )
+                    fig_t.update_traces(marker_color="#065a82", marker_line_color="white",
+                                        marker_line_width=2,
+                                        width=1000*60*60*24*20)
                     fig_t.update_layout(
                         width=chart_w, height=450, bargap=0.4,
                         paper_bgcolor="white", plot_bgcolor="white",
-                        margin=dict(l=50, r=20, t=45, b=130),
-                        xaxis=dict(
-                            tickformat="%b %Y", tickmode="array",
-                            tickvals=sel_tt["date"].tolist(),
-                            tickangle=-45, tickfont=dict(size=11),
-                            title="Month", showgrid=False,
-                        ),
-                        yaxis=dict(
-                            rangemode="tozero", range=[0, 20], dtick=2,
-                            tickformat="d", title="Mentions",
-                            showgrid=True, gridcolor="#e5e7eb",
-                        ),
-                    )
+                        margin=dict(l=50,r=20,t=45,b=130),
+                        xaxis=dict(tickformat="%b %Y", tickmode="array",
+                                   tickvals=sel_tt["date"].tolist(),
+                                   tickangle=-45, tickfont=dict(size=11),
+                                   title="Month", showgrid=False),
+                        yaxis=dict(rangemode="tozero", range=[0,20], dtick=2,
+                                   tickformat="d", title="Mentions",
+                                   showgrid=True, gridcolor="#e5e7eb"))
                     st.markdown(
                         '<div style="overflow-x:auto; overflow-y:hidden; width:100%; '
                         'border:1px solid #e5e7eb; border-radius:6px; padding:4px;">',
@@ -1126,11 +1042,11 @@ def page_themes(df):
                     emer = curr_df[["count"]].join(prev_df[["count"]],
                                                     lsuffix="_curr", rsuffix="_prev",
                                                     how="outer").fillna(0)
-                    emer["Change"]     = (emer["count_curr"] - emer["count_prev"]).astype(int)
+                    emer["Change"]     = (emer["count_curr"]-emer["count_prev"]).astype(int)
                     emer["count_curr"] = emer["count_curr"].astype(int)
                     emer["count_prev"] = emer["count_prev"].astype(int)
                     st.dataframe(
-                        emer.sort_values("Change", ascending=False)
+                        emer.sort_values("Change",ascending=False)
                         [["count_prev","count_curr","Change"]]
                         .rename(columns={"count_prev":"Prev Month",
                                          "count_curr":"Current Month",
@@ -1147,57 +1063,49 @@ def page_themes(df):
         with dd_col1:
             dd_theme = st.selectbox("Theme:", unique_themes, key="dd_theme")
         with dd_col2:
-            dd_sent  = st.selectbox(
-                "Sentiment:", ["negative","positive","neutral","neutral/mixed"],
-                key="dd_sent")
-        dd_data = df_exp[(df_exp["Theme"]==dd_theme) &
-                         (df_exp["predicted_sentiment"]==dd_sent)]
+            dd_sent  = st.selectbox("Sentiment:",
+                                    ["negative","positive","neutral","neutral/mixed"],
+                                    key="dd_sent")
+        dd_data = df_exp[(df_exp["Theme"]==dd_theme) & (df_exp["predicted_sentiment"]==dd_sent)]
         if dd_data.empty:
             st.info(f"No {dd_sent} reviews found for '{dd_theme}'.")
         else:
-            hc, bc = st.columns([3, 1])
-            with bc:
-                st.button("Refresh", key="dd_refresh")
+            hc, bc = st.columns([3,1])
+            with bc: st.button("Refresh", key="dd_refresh")
             tc_name = _text_col(dd_data)
-            for rev in dd_data.sample(min(5, len(dd_data)))[tc_name].tolist():
+            for rev in dd_data.sample(min(5,len(dd_data)))[tc_name].tolist():
                 st.info(f'"{rev}"')
 
 
 def page_outliers(df):
     st.markdown("### Outlier & Edge-Case Reviews")
-    st.write(
-        "**Low-confidence predictions** are reviews the model was unsure about. "
-        "**Mixed-signal reviews** contain both positive and negative language.")
+    st.write("**Low-confidence predictions** are reviews the model was unsure about. "
+             "**Mixed-signal reviews** contain both positive and negative language.")
 
     if "confidence" in df.columns:
         st.markdown("---")
         st.markdown("#### Low-Confidence Predictions")
-        threshold = st.slider(
-            "Show reviews below this confidence level:", 0.40, 0.90, 0.60, 0.05,
-            help="60% means the model was only 60% sure of its prediction.")
+        threshold = st.slider("Show reviews below this confidence level:",
+                              0.40, 0.90, 0.60, 0.05,
+                              help="60% means the model was only 60% sure of its prediction.")
         low_conf = df[df["confidence"] < threshold].copy()
-        st.markdown(
-            f"**{len(low_conf):,} reviews** predicted with less than "
-            f"**{threshold*100:.0f}% confidence** — may be worth checking manually.")
+        st.markdown(f"**{len(low_conf):,} reviews** predicted with less than "
+                    f"**{threshold*100:.0f}% confidence** — may be worth checking manually.")
 
         if not low_conf.empty:
-            fig_out = px.histogram(
-                low_conf, x="confidence", color="predicted_sentiment",
-                title="How uncertain was the model? (grouped by predicted sentiment)",
-                color_discrete_map=COLOUR_MAP, barmode="group")
+            fig_out = px.histogram(low_conf, x="confidence", color="predicted_sentiment",
+                                   title="How uncertain was the model?",
+                                   color_discrete_map=COLOUR_MAP, barmode="group")
             fig_out.update_traces(marker_line_color="white", marker_line_width=2,
                                   xbins=dict(start=0.0, end=1.0, size=0.05))
             fig_out.update_layout(**_base_layout(
                 xaxis_title="Model Confidence Score",
                 yaxis_title="Number of Reviews",
                 legend_title_text="Predicted Sentiment",
-                xaxis=dict(
-                    tickformat=".0%", range=[-0.05, 1.05],
-                    tickvals=[i/10 for i in range(0, 11)],
-                    ticktext=[f"{i*10}%" for i in range(0, 11)],
-                ),
-                yaxis=_hist_yaxis(low_conf),
-            ))
+                xaxis=dict(tickformat=".0%", range=[-0.05,1.05],
+                           tickvals=[i/10 for i in range(0,11)],
+                           ticktext=[f"{i*10}%" for i in range(0,11)]),
+                yaxis=_hist_yaxis(low_conf)))
             st.plotly_chart(fig_out, use_container_width=True)
             _chart_download(fig_out, "low_confidence_distribution.png",
                             "Download low-confidence chart")
@@ -1208,13 +1116,10 @@ def page_outliers(df):
             st.markdown("**Reviews sorted by lowest confidence first:**")
             st.dataframe(low_conf[show_cols].sort_values("confidence").head(30),
                          use_container_width=True)
-            st.download_button(
-                "Download low-confidence reviews",
-                data=low_conf.to_csv(index=False),
-                file_name="low_confidence_reviews.csv",
-                mime="text/csv",
-                key="dl_low_conf",
-            )
+            st.download_button("Download low-confidence reviews",
+                               data=low_conf.to_csv(index=False),
+                               file_name="low_confidence_reviews.csv",
+                               mime="text/csv", key="dl_low_conf")
 
     st.markdown("---")
 
@@ -1229,22 +1134,12 @@ def page_outliers(df):
             show_cols = [tc_name, "predicted_sentiment", "confidence"] + \
                         [c for c in ["themes"] if c in mixed_df.columns]
             st.dataframe(mixed_df[show_cols].head(30), use_container_width=True)
-            st.download_button(
-                "Download mixed-signal reviews",
-                data=mixed_df.to_csv(index=False),
-                file_name="mixed_signal_reviews.csv",
-                mime="text/csv",
-                key="dl_mixed",
-            )
+            st.download_button("Download mixed-signal reviews",
+                               data=mixed_df.to_csv(index=False),
+                               file_name="mixed_signal_reviews.csv",
+                               mime="text/csv", key="dl_mixed")
         else:
             st.info("No mixed-signal reviews detected in this dataset.")
-
-
-# ── CSV hash for theme caching ─────────────────────────────────────────────────
-
-def _csv_hash(df):
-    """Unique fingerprint for a dataframe — used to cache theme extraction results."""
-    return hashlib.md5(pd.util.hash_pandas_object(df).values).hexdigest()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1252,10 +1147,9 @@ def _csv_hash(df):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    st.title("Feedback Intelligence Platform")
-    st.markdown(
-        "Upload a review CSV in the sidebar, click **Run Analysis**, "
-        "then navigate results using the tabs below.")
+    st.title("Customer Feedback Intelligence Platform")
+    st.markdown("Upload a review CSV in the sidebar, click **Run Analysis**, "
+                "then navigate results using the tabs below.")
 
     model, vectorizer, train_accuracy = load_or_train_model()
     if model is None or vectorizer is None:
@@ -1279,7 +1173,6 @@ def main():
             df = pd.read_csv(uploaded_file)
             df = preprocess_reviews(df)
             df = predict_reviews(df, model, vectorizer)
-            # Use cached themes if same CSV was uploaded before
             cache_key = f"themes_{_csv_hash(df)}"
             if cache_key in st.session_state:
                 df["themes"] = st.session_state[cache_key]
@@ -1295,12 +1188,8 @@ def main():
         df = st.session_state.analyzed_df
         st.markdown("---")
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "Overview",
-            "Positive Reviews",
-            "Neutral Reviews",
-            "Negative Reviews",
-            "Theme Extraction",
-            "Outliers",
+            "Overview", "Positive Reviews", "Neutral Reviews",
+            "Negative Reviews", "Theme Extraction", "Outliers",
         ])
         with tab1: page_overview(df)
         with tab2: page_positive(df)
