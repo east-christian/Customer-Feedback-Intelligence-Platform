@@ -755,8 +755,11 @@ def render_spike_detection(df):
         st.warning(f"Could not run spike detection: {e}")
 
 
-def classify_theme_lifecycle(df_exploded):
-    """Classify each theme as Emerging / Growing / Stable / Declining based on monthly trend."""
+def classify_theme_lifecycle(df_exploded, sentiment_filter="negative"):
+    """
+    Classify each theme as Emerging / Growing / Stable / Declining based on monthly trend.
+    sentiment_filter: 'positive' or 'negative' to filter the reviews used for analysis.
+    """
     if "date" not in df_exploded.columns:
         return None
 
@@ -766,6 +769,13 @@ def classify_theme_lifecycle(df_exploded):
         df_exploded = df_exploded[df_exploded["date"].notna()]
         if df_exploded.empty:
             return None
+
+        # Apply the sentiment filter before computing lifecycle trends
+        if sentiment_filter in ("positive", "negative"):
+            df_exploded["sentiment_clean"] = df_exploded["predicted_sentiment"].apply(normalize_sentiment_label)
+            df_exploded = df_exploded[df_exploded["sentiment_clean"] == sentiment_filter]
+            if df_exploded.empty:
+                return None
 
         theme_time = (
             df_exploded.groupby([pd.Grouper(key="date", freq="ME"), "Theme"])
@@ -784,9 +794,19 @@ def classify_theme_lifecycle(df_exploded):
         results = []
         for theme in theme_time["Theme"].unique():
             theme_data = theme_time[theme_time["Theme"] == theme]
-            first_half_avg = theme_data[theme_data["date"].isin(first_half_months)]["count"].mean() or 0
-            second_half_avg = theme_data[theme_data["date"].isin(second_half_months)]["count"].mean() or 0
-            first_half_presence = (theme_data[theme_data["date"].isin(first_half_months)]["count"] > 0).sum()
+            first_half_series = theme_data[theme_data["date"].isin(first_half_months)]["count"]
+            second_half_series = theme_data[theme_data["date"].isin(second_half_months)]["count"]
+
+            # Use 0 fallback when there are no mentions in that half so we never get NaN in the display
+            first_half_avg = first_half_series.mean() if not first_half_series.empty else 0.0
+            second_half_avg = second_half_series.mean() if not second_half_series.empty else 0.0
+
+            if pd.isna(first_half_avg):
+                first_half_avg = 0.0
+            if pd.isna(second_half_avg):
+                second_half_avg = 0.0
+
+            first_half_presence = (first_half_series > 0).sum()
 
             if first_half_presence <= 1 and second_half_avg > 0:
                 lifecycle = "🚀 Emerging"
@@ -818,13 +838,27 @@ def classify_theme_lifecycle(df_exploded):
 
 
 def render_theme_lifecycle(df_exploded):
-    lifecycle_df = classify_theme_lifecycle(df_exploded)
-    if lifecycle_df is None or lifecycle_df.empty:
-        st.info("Not enough time-spread data for lifecycle analysis (need at least 4 distinct months).")
-        return
-
     st.markdown("#### Theme Lifecycle Classification")
     st.caption("How each theme's mention volume has changed from the first half to the second half of the analyzed period.")
+
+    # Positive/Negative only — no "all" option since mixed trends are less actionable
+    sentiment_filter = st.radio(
+        "Filter by sentiment:",
+        ["negative", "positive"],
+        format_func=lambda x: x.title(),
+        horizontal=True,
+        key="lifecycle_sentiment_filter",
+    )
+
+    lifecycle_df = classify_theme_lifecycle(df_exploded, sentiment_filter=sentiment_filter)
+    if lifecycle_df is None or lifecycle_df.empty:
+        st.info(f"Not enough {sentiment_filter} data with time spread for lifecycle analysis (need at least 4 distinct months).")
+        return
+
+    if sentiment_filter == "positive":
+        st.caption("Showing trends in **positive** mentions only — what customers are praising more or less over time.")
+    elif sentiment_filter == "negative":
+        st.caption("Showing trends in **negative** mentions only — what customers are complaining about more or less over time.")
 
     for _, row in lifecycle_df.iterrows():
         cols = st.columns([2, 1.5, 2, 2])
@@ -881,12 +915,13 @@ def render_emergent_themes(df_exploded):
             'Change': 'Momentum',
         })[['Previous Month', 'Current Month', 'Momentum']]
 
+        # Plain table without color gradient
         st.dataframe(
             emergent_display.style.format({
                 'Previous Month': '{:.0f}',
                 'Current Month': '{:.0f}',
                 'Momentum': '{:+.0f}',
-            }).background_gradient(subset=['Momentum'], cmap='RdYlGn'),
+            }),
             use_container_width=True,
         )
     except Exception as e:
@@ -1012,10 +1047,13 @@ def render_deep_dive(df, df_exploded):
 
                     fig = px.bar(phrase_df, x="Count", y="Phrase", orientation='h')
                     fig.update_traces(marker_color=SENTIMENT_COLOR_MAP.get(dd_sentiment, "#6B7280"))
+                    # Give the y-axis enough left margin so multi-word phrases never get cut off
                     fig.update_layout(
-                        height=400,
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        xaxis_title="Mentions", yaxis_title="",
+                        height=420,
+                        margin=dict(t=10, b=10, l=180, r=20),
+                        xaxis_title="Mentions",
+                        yaxis_title="",
+                        yaxis=dict(automargin=True, tickfont=dict(size=12)),
                     )
                     st.plotly_chart(fig, use_container_width=True)
                 else:
@@ -1049,7 +1087,8 @@ def render_deep_dive(df, df_exploded):
 
 
 def render_summary_table(df):
-    cols_to_show = ["predicted_sentiment", "confidence", "is_mixed", "themes"]
+    # Include raw_text so the user can read the actual review alongside the prediction
+    cols_to_show = ["raw_text", "predicted_sentiment", "confidence", "is_mixed", "themes"]
     available_cols = [c for c in cols_to_show if c in df.columns]
     display_df = df[available_cols].head(10).copy()
     if "predicted_sentiment" in display_df.columns:
@@ -1073,6 +1112,11 @@ def render_dashboard(df):
     ])
 
     with tab1:
+        # Data preview is shown first so the user immediately sees real predictions
+        st.markdown("### Data Preview - First 10 Rows")
+        render_summary_table(df)
+
+        st.markdown("---")
         col1, col2 = st.columns([1, 1])
         with col1:
             st.markdown("### Sentiment Distribution")
@@ -1101,10 +1145,6 @@ def render_dashboard(df):
         st.markdown("### Theme × Sentiment Heatmap")
         st.caption("Visual breakdown of how each theme is perceived by customers. Spot problem areas at a glance.")
         render_heatmap(df_exploded)
-
-        st.markdown("---")
-        st.markdown("###  Data preview - frist 10 rows")
-        render_summary_table(df)
 
     with tab2:
         st.markdown("### Sentiment Over Time")
