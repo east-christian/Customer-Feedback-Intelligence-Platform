@@ -137,6 +137,57 @@ def load_or_train_model():
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 
 def preprocess_reviews(df):
+    # ── Auto-detect and rename common column name variations ──────────────────
+    # This handles CSVs from Instant Data Scraper, Octoparse, Apify, etc.
+    col_map = {}
+    cols_lower = {c.lower(): c for c in df.columns}
+
+    # Text column — look for any column that likely contains review text
+    if "text" not in df.columns:
+        text_candidates = [
+            "comment", "review", "review_text", "review text", "body",
+            "content", "description", "reviewbody", "review_body",
+            "raw_text", "clean_text", "reviewtext", "reviewcontent",
+        ]
+        for candidate in text_candidates:
+            if candidate in cols_lower:
+                col_map[cols_lower[candidate]] = "text"
+                break
+        # Also catch Yelp/Instant Data Scraper dynamic class names like comment__373c0
+        if "text" not in col_map.values():
+            for c in df.columns:
+                if "comment" in c.lower() or "review" in c.lower():
+                    if c not in col_map:
+                        col_map[c] = "text"
+                        break
+
+    # Stars column
+    if "stars" not in df.columns:
+        star_candidates = [
+            "rating", "star", "stars", "star_rating", "starrating",
+            "score", "rate", "reviewrating", "review_rating",
+        ]
+        for candidate in star_candidates:
+            if candidate in cols_lower:
+                col_map[cols_lower[candidate]] = "stars"
+                break
+
+    # Date column
+    if "date" not in df.columns:
+        date_candidates = [
+            "datetime", "created", "created_at", "createdat",
+            "review_date", "reviewdate", "posted", "posted_at",
+            "time", "timestamp", "published", "date_created",
+        ]
+        for candidate in date_candidates:
+            if candidate in cols_lower:
+                col_map[cols_lower[candidate]] = "date"
+                break
+
+    if col_map:
+        df = df.rename(columns=col_map)
+
+    # ── Clean the text column ──────────────────────────────────────────────────
     if "clean_text" in df.columns:
         df["clean_text"] = df["clean_text"].fillna("").astype(str).str.lower()
     elif "text" in df.columns:
@@ -144,7 +195,10 @@ def preprocess_reviews(df):
     elif "raw_text" in df.columns:
         df["clean_text"] = df["raw_text"].fillna("").astype(str).str.lower()
     else:
-        raise ValueError("CSV must have a 'text', 'raw_text', or 'clean_text' column")
+        raise ValueError(
+            "Could not find a review text column. "
+            "Please rename your text column to 'text' before uploading."
+        )
     return df
 
 CONTRAST_WORDS = {"but","however","though","although","yet","except","overall","while"}
@@ -336,13 +390,42 @@ Write exactly 3 short paragraphs:
 
 METRIC_CSS = """
 <style>
+/* ── Global font size increase ── */
+html, body, [class*="css"] {
+    font-size: 19px !important;
+}
+.stMarkdown p, .stMarkdown li {
+    font-size: 19px !important;
+    line-height: 1.8 !important;
+}
+.stMarkdown h1 { font-size: 2.4rem !important; }
+.stMarkdown h2 { font-size: 2.0rem !important; }
+.stMarkdown h3 { font-size: 1.6rem !important; }
+label, .stSelectbox label, .stTextInput label,
+.stSlider label, .stCheckbox label,
+.stTextArea label { font-size: 18px !important; }
+.stButton button { font-size: 18px !important; }
+.stDataFrame, .stTable { font-size: 17px !important; }
+.stCaption, [data-testid="stCaptionContainer"] {
+    font-size: 15px !important;
+}
+.stTab button { font-size: 18px !important; font-weight: 500 !important; }
+.stSelectbox div, .stTextInput input, .stTextArea textarea {
+    font-size: 18px !important;
+}
+.stExpander summary { font-size: 18px !important; }
+.stInfo, .stSuccess, .stWarning, .stError {
+    font-size: 17px !important;
+}
+
+/* ── Metric cards ── */
 [data-testid="stMetric"] {
     background-color: #f8f9fa; border: 1px solid #e9ecef;
     border-radius: 8px; padding: 16px; min-height: 110px;
 }
-[data-testid="stMetricLabel"] { font-size: 13px; font-weight: 600; color: #6b7280; }
-[data-testid="stMetricValue"] { font-size: 28px; font-weight: 700; }
-[data-testid="stMetricDelta"] { font-size: 12px; color: #6b7280 !important; }
+[data-testid="stMetricLabel"] { font-size: 15px !important; font-weight: 600; color: #6b7280; }
+[data-testid="stMetricValue"] { font-size: 32px !important; font-weight: 700; }
+[data-testid="stMetricDelta"] { font-size: 14px !important; color: #6b7280 !important; }
 [data-testid="stMetricDelta"] svg { display: none; }
 </style>
 """
@@ -1205,6 +1288,257 @@ def page_outliers(df):
             st.info("No mixed-signal reviews detected in this dataset.")
 
 
+def page_yelp_scraper():
+    st.markdown("## Yelp Review Scraper")
+    st.write(
+        "Scrape reviews directly from any Yelp business page. "
+        "Filter by date range and choose how many reviews to collect. "
+        "The result downloads as a CSV ready for analysis."
+    )
+
+    st.warning(
+        "**Note:** Yelp's website structure can change over time which may affect scraping. "
+        "If you get an error, try a smaller review limit or a different location URL."
+    )
+
+    st.markdown("---")
+    st.markdown("### Step 1 — Get the Yelp Business URL")
+    st.markdown(
+        """
+        1. Go to **yelp.com** and search for the business (e.g. *Starbucks Chicago*)
+        2. Click on the specific location you want
+        3. Copy the full URL from your browser — it will look like:
+           `https://www.yelp.com/biz/starbucks-chicago-12`
+        4. Paste it below
+        """
+    )
+
+    yelp_url = st.text_input(
+        "Yelp Business URL:",
+        placeholder="https://www.yelp.com/biz/starbucks-chicago-12",
+        key="yelp_url",
+    )
+
+    st.markdown("---")
+    st.markdown("### Step 2 — Set Filters")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        max_reviews = st.slider(
+            "Maximum reviews to collect:",
+            min_value=10, max_value=500, value=100, step=10,
+            key="yelp_max_reviews",
+        )
+        filter_stars = st.multiselect(
+            "Filter by star rating (leave empty for all):",
+            options=[1, 2, 3, 4, 5],
+            default=[],
+            format_func=lambda x: f"{x} star{'s' if x > 1 else ''}",
+            key="yelp_stars",
+        )
+
+    with col2:
+        use_date_filter = st.checkbox("Filter by date range", value=False, key="yelp_use_date")
+        if use_date_filter:
+            date_from = st.date_input("From date:", key="yelp_date_from")
+            date_to   = st.date_input("To date:",   key="yelp_date_to")
+        else:
+            date_from = None
+            date_to   = None
+
+        sort_by = st.selectbox(
+            "Sort reviews by:",
+            options=["date_desc", "date_asc", "rating_desc", "rating_asc", "relevance_desc"],
+            format_func=lambda x: {
+                "date_desc":      "Newest first",
+                "date_asc":       "Oldest first",
+                "rating_desc":    "Highest rated first",
+                "rating_asc":     "Lowest rated first",
+                "relevance_desc": "Most relevant first",
+            }[x],
+            key="yelp_sort",
+        )
+
+    st.markdown("---")
+    st.markdown("### Step 3 — Scrape")
+
+    if st.button("Start Scraping", key="yelp_scrape_btn", use_container_width=True):
+        if not yelp_url.strip():
+            st.error("Please enter a Yelp business URL first.")
+        elif "yelp.com/biz/" not in yelp_url:
+            st.error("That doesn't look like a valid Yelp business URL. Make sure it contains 'yelp.com/biz/'.")
+        else:
+            try:
+                import requests
+                from bs4 import BeautifulSoup
+                import time as _time
+
+                headers = {
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    "Accept-Language": "en-US,en;q=0.9",
+                }
+
+                reviews_data = []
+                page         = 0
+                progress_bar = st.progress(0)
+                status_text  = st.empty()
+                stop_scraping = False
+
+                while len(reviews_data) < max_reviews and not stop_scraping:
+                    # Build URL with sort and pagination
+                    sep      = "&" if "?" in yelp_url else "?"
+                    page_url = f"{yelp_url.rstrip('/')}{sep}sort_by={sort_by}&start={page*10}"
+
+                    status_text.text(
+                        f"Scraping page {page+1} — {len(reviews_data)} reviews collected so far...")
+
+                    resp = requests.get(page_url, headers=headers, timeout=15)
+                    if resp.status_code != 200:
+                        st.error(f"Could not access Yelp (status {resp.status_code}). "
+                                 "Yelp may be blocking automated requests. "
+                                 "Try again in a few minutes or use the manual paste method.")
+                        break
+
+                    soup = BeautifulSoup(resp.text, "html.parser")
+
+                    # Find review containers
+                    review_items = soup.find_all("li", {"class": lambda c: c and "review" in c.lower()})
+                    if not review_items:
+                        # fallback selector
+                        review_items = soup.select("div[data-testid='review-list-item'], "
+                                                   "div.review__373c0__13kpL, "
+                                                   "li.css-1qn0b6x")
+
+                    if not review_items:
+                        st.warning(
+                            "Could not find reviews on this page. Yelp may have updated "
+                            "their page structure. Try the manual paste method in the Build CSV tab."
+                        )
+                        break
+
+                    page_had_reviews = False
+                    for item in review_items:
+                        if len(reviews_data) >= max_reviews:
+                            stop_scraping = True
+                            break
+
+                        # Extract text
+                        text_el = (item.find("span", {"class": lambda c: c and "raw__" in str(c)}) or
+                                   item.find("p", {"class": lambda c: c and "comment" in str(c).lower()}) or
+                                   item.find("span", lang=True))
+                        if not text_el:
+                            continue
+                        text = text_el.get_text(strip=True)
+                        if len(text) < 10:
+                            continue
+
+                        # Extract star rating
+                        stars = None
+                        star_el = item.find("div", {"aria-label": lambda a: a and "star rating" in str(a).lower()})
+                        if star_el:
+                            aria = star_el.get("aria-label","")
+                            digits = [c for c in aria if c.isdigit()]
+                            if digits:
+                                stars = int(digits[0])
+
+                        # Extract date
+                        date_str = None
+                        date_el  = item.find("span", {"class": lambda c: c and "date" in str(c).lower()})
+                        if not date_el:
+                            date_el = item.find("time")
+                        if date_el:
+                            date_str = date_el.get_text(strip=True)
+                            try:
+                                parsed_date = pd.to_datetime(date_str, errors="coerce")
+                                if pd.notna(parsed_date):
+                                    if use_date_filter and date_from and date_to:
+                                        if not (date_from <= parsed_date.date() <= date_to):
+                                            continue
+                                    date_str = parsed_date.strftime("%Y-%m-%d")
+                            except Exception:
+                                pass
+
+                        # Apply star filter
+                        if filter_stars and stars not in filter_stars:
+                            continue
+
+                        reviews_data.append({
+                            "text":  text,
+                            "stars": stars,
+                            "date":  date_str,
+                        })
+                        page_had_reviews = True
+
+                    if not page_had_reviews:
+                        break  # no more reviews
+
+                    page += 1
+                    progress_bar.progress(min(len(reviews_data) / max_reviews, 1.0))
+                    _time.sleep(1.5)  # polite delay between requests
+
+                progress_bar.progress(1.0)
+                status_text.text(f"Complete! Collected {len(reviews_data)} reviews.")
+
+                if reviews_data:
+                    out_df    = pd.DataFrame(reviews_data)
+                    csv_bytes = out_df.to_csv(index=False).encode("utf-8")
+
+                    st.success(f"Successfully scraped **{len(out_df)} reviews**.")
+                    st.dataframe(out_df.head(10), use_container_width=True)
+
+                    st.download_button(
+                        label=f"Download CSV ({len(out_df)} reviews)",
+                        data=csv_bytes,
+                        file_name=f"yelp_reviews_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv",
+                        key="dl_yelp_csv",
+                    )
+                    st.info(
+                        "Upload this CSV in the sidebar and click **Run Analysis** to analyse these reviews."
+                    )
+                else:
+                    st.warning(
+                        "No reviews were collected. This can happen if:\n"
+                        "- Yelp blocked the request (try again in a few minutes)\n"
+                        "- The URL is incorrect\n"
+                        "- Your date or star filters excluded all reviews\n\n"
+                        "Try the manual paste method in the **Build CSV** tab instead."
+                    )
+
+            except ImportError:
+                st.error("Missing required packages. Run this in your terminal:")
+                st.code("pip install requests beautifulsoup4")
+            except Exception as e:
+                st.error(f"Scraping failed: {e}")
+                st.info(
+                    "Yelp actively blocks automated scrapers. If this keeps failing, "
+                    "use the **Build CSV** tab to paste reviews manually instead."
+                )
+
+    st.markdown("---")
+    st.markdown("### Multiple Locations (Chain Restaurants)")
+    st.write(
+        "To collect reviews from multiple Starbucks or restaurant locations, "
+        "run the scraper once per location URL and download each as a separate CSV. "
+        "Then upload and analyse them one at a time, or combine them manually "
+        "by opening both CSVs in Excel and copying the rows together before uploading."
+    )
+    st.markdown(
+        """
+        **Finding location URLs on Yelp:**
+        1. Search for the business name on yelp.com
+        2. Use the map or location filter to find specific branches
+        3. Click each branch — each has its own unique URL ending
+           e.g. `starbucks-new-orleans-5` vs `starbucks-new-orleans-12`
+        4. Copy each URL and run the scraper separately
+        """
+    )
+
+
 def page_csv_builder():
     st.markdown("## Build a CSV from Reviews")
     st.write(
@@ -1215,40 +1549,28 @@ def page_csv_builder():
 
     # ── How to collect from Yelp ───────────────────────────────────────────────
     with st.expander("How to collect reviews from Yelp — step by step", expanded=False):
-        st.markdown(
-            """
-            **Step 1 — Find the business on Yelp**
-            Go to [yelp.com](https://www.yelp.com) and search for the business
-            you want to analyse, e.g. *"Starbucks New Orleans"*.
-
-            **Step 2 — Open the Reviews section**
-            Click on a business listing. Scroll down past the photos and business
-            info until you see the reviews section.
-
-            **Step 3 — Copy each review**
-            Click *"Read more"* on any review that is cut off so you get the full text.
-            Select the review text, copy it, and paste it into the text area below.
-            Repeat for as many reviews as you need. You can paste all of them at once —
-            one review per line, or separated by blank lines.
-
-            **Step 4 — Note the star rating**
-            Each review on Yelp shows a 1–5 star rating. Note the rating alongside
-            each review when you paste it — you can enter star ratings in the table below.
-
-            **Step 5 — Use Instant Data Scraper (faster method)**
-            - Install the free Chrome extension **Instant Data Scraper**
-            - Go to the Yelp reviews page
-            - Click the extension icon — it auto-detects the review table
-            - Click **Start Crawling** to load all pages
-            - Click **Download CSV** — the extension exports all reviews directly
-            - Rename the review text column to `text` and the rating column to `stars`
-            before uploading to this platform
-
-            **Step 6 — Generate and download your CSV**
-            Paste your reviews in the box below, fill in star ratings and dates
-            (optional), then click **Generate CSV** to download a ready-to-use file.
-            """
-        )
+        steps = [
+            ("#16a34a", "Step 1 — Find the business on Yelp",
+             "Go to yelp.com and search for the business you want to analyse, e.g. <em>\"Starbucks New Orleans\"</em>."),
+            ("#2563eb", "Step 2 — Open the Reviews section",
+             "Click on a business listing. Scroll down past the photos and business info until you see the reviews section."),
+            ("#dc2626", "Step 3 — Copy each review",
+             "Click <em>\"Read more\"</em> on any review that is cut off so you get the full text. Select the review text, copy it, and paste it into the text area below. You can paste all reviews at once — one per line or separated by blank lines."),
+            ("#9333ea", "Step 4 — Note the star rating",
+             "Each review on Yelp shows a 1–5 star rating. Note the rating alongside each review — you can set a default star rating in the options below."),
+            ("#ea580c", "Step 5 — Generate and download your CSV",
+             "Paste your reviews in the box below, fill in the optional star rating and date, then click <strong>Generate CSV</strong> to download a ready-to-use file."),
+        ]
+        for color, title, body in steps:
+            st.markdown(
+                f'<div style="background:#ffffff; border-left:5px solid {color}; '
+                f'padding:14px 20px; border-radius:6px; margin-bottom:12px; '
+                f'box-shadow:0 1px 4px rgba(0,0,0,0.08);">'
+                f'<p style="font-size:18px; font-weight:700; color:{color}; margin:0 0 6px 0;">{title}</p>'
+                f'<p style="font-size:16px; color:#1f2937; margin:0; line-height:1.6;">{body}</p>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown("---")
     st.markdown("### Paste Your Reviews")
@@ -1448,15 +1770,11 @@ def page_methodology():
     with tc1:
         st.markdown("**ML**\nscikit-learn · Logistic Regression · TF-IDF")
     with tc2:
-        st.markdown("**LLM**\nOllama · Gemma 3 4B · Python threading")
+        st.markdown("**LLM**\nOllama · Gemma 3 4B")
     with tc3:
         st.markdown("**Dashboard**\nStreamlit · Plotly · ReportLab · pandas")
 
     st.markdown("---")
-    st.info(
-        "All processing runs entirely on your local machine. "
-        "No review data is sent to any external server or cloud API."
-    )
     st.caption("Customer Feedback Intelligence Platform — CSCI 491 · Group 5")
 
 
@@ -1465,6 +1783,7 @@ def page_methodology():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
+    st.markdown(METRIC_CSS, unsafe_allow_html=True)
     st.markdown("# Customer Feedback Intelligence Platform")
     st.markdown("Upload a review CSV in the sidebar, click **Run Analysis**, "
                 "then navigate results using the tabs below.")
@@ -1505,10 +1824,10 @@ def main():
     if "analyzed_df" in st.session_state:
         df = st.session_state.analyzed_df
         st.markdown("---")
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
             "Overview", "Positive Reviews", "Neutral Reviews",
             "Negative Reviews", "Theme Extraction", "Outliers",
-            "Build CSV", "About",
+            "Yelp Scraper", "Build CSV", "About",
         ])
         with tab1: page_overview(df)
         with tab2: page_positive(df)
@@ -1516,8 +1835,9 @@ def main():
         with tab4: page_negative(df)
         with tab5: page_themes(df)
         with tab6: page_outliers(df)
-        with tab7: page_csv_builder()
-        with tab8: page_methodology()
+        with tab7: page_yelp_scraper()
+        with tab8: page_csv_builder()
+        with tab9: page_methodology()
 
     elif not uploaded_file:
         st.markdown("---")
@@ -1529,9 +1849,7 @@ def main():
                 'border-radius:10px; padding:22px 24px;">'
                 '<h3 style="color:#16a34a; margin-top:0;">Already have a CSV?</h3>'
                 '<p style="color:#374151;">Upload your review CSV in the sidebar '
-                'and click <strong>Run Analysis</strong> to get started.<br><br>'
-                'Your CSV needs a <code>text</code> column containing the review text. '
-                'Optional columns: <code>stars</code>, <code>date</code>.</p>'
+                'and click <strong>Run Analysis</strong> to get started.</p>'
                 '</div>',
                 unsafe_allow_html=True,
             )
@@ -1540,17 +1858,18 @@ def main():
                 '<div style="background:#eff6ff; border:1px solid #bfdbfe; '
                 'border-radius:10px; padding:22px 24px;">'
                 '<h3 style="color:#2563eb; margin-top:0;">Need to collect reviews first?</h3>'
-                '<p style="color:#374151;">Use the <strong>Build CSV</strong> tab below '
-                'to paste reviews from Yelp or any source and convert them into a '
-                'ready-to-use CSV file.<br><br>'
-                'Step-by-step Yelp collection guide is included.</p>'
+                '<p style="color:#374151;">Use the <strong>Yelp Scraper</strong> tab to '
+                'automatically download reviews from any Yelp page — filter by date, '
+                'star rating, and location.<br><br>'
+                'Or use the <strong>Build CSV</strong> tab to paste reviews manually.</p>'
                 '</div>',
                 unsafe_allow_html=True,
             )
         st.markdown("---")
-        tab_a, tab_b = st.tabs(["Build CSV", "About"])
-        with tab_a: page_csv_builder()
-        with tab_b: page_methodology()
+        tab_a, tab_b, tab_c = st.tabs(["Yelp Scraper", "Build CSV", "About"])
+        with tab_a: page_yelp_scraper()
+        with tab_b: page_csv_builder()
+        with tab_c: page_methodology()
 
 
 if __name__ == "__main__":
