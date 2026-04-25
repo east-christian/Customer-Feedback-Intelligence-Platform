@@ -411,7 +411,15 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #1e3a5f 0%, #065a82 100%) !important;
 }
-[data-testid="stSidebar"] * { color: #ffffff !important; }
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] div,
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+    color: #ffffff !important;
+}
 [data-testid="stSidebar"] .stButton button {
     background-color: #ffffff !important;
     color: #1e3a5f !important;
@@ -422,6 +430,19 @@ html, body, [class*="css"] {
 }
 [data-testid="stSidebar"] .stButton button:hover {
     background-color: #e0f2fe !important;
+    color: #1e3a5f !important;
+}
+[data-testid="stSidebar"] .stFileUploader {
+    background-color: rgba(255,255,255,0.15) !important;
+    border-radius: 8px !important;
+    padding: 8px !important;
+}
+[data-testid="stSidebar"] .stFileUploader label {
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] small,
+[data-testid="stSidebar"] .stCaption {
+    color: #c7d7f0 !important;
 }
 
 /* ── Tab bar ── */
@@ -544,7 +565,7 @@ def _vertical_bar_axis():
         ),
     )
 
-def _horizontal_bar_axis(max_val):
+def _horizontal_bar_axis(max_val, title=""):
     nice_max = max(1, int(max_val) + 1)
     step = max(1, int(nice_max / 8))
     return dict(
@@ -552,6 +573,7 @@ def _horizontal_bar_axis(max_val):
             range=[0, nice_max + step * 0.5],
             tick0=0, dtick=step, tickformat="d",
             rangemode="tozero", tickfont=TICK_FONT,
+            title=dict(text=title, font=AXIS_TITLE_FONT) if title else {},
         ),
         yaxis=dict(
             categoryorder="total ascending",
@@ -1063,11 +1085,7 @@ def page_positive(df):
                          color_discrete_sequence=["#16a34a"])
         fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
         fig_bar.update_layout(**_base_layout(
-            xaxis=dict(
-                title=dict(text="Number of reviews mentioning this theme", font=AXIS_TITLE_FONT),
-                tickfont=TICK_FONT,
-            ),
-            **_horizontal_bar_axis(tc["Count"].max())))
+            **_horizontal_bar_axis(tc["Count"].max(), title="Number of reviews mentioning this theme")))
         st.plotly_chart(fig_bar, use_container_width=True)
         _chart_download(fig_bar, "positive_themes.png", "Download themes chart")
 
@@ -1118,11 +1136,7 @@ def page_negative(df):
                          color_discrete_sequence=["#dc2626"])
         fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
         fig_bar.update_layout(**_base_layout(
-            xaxis=dict(
-                title=dict(text="Number of reviews mentioning this theme", font=AXIS_TITLE_FONT),
-                tickfont=TICK_FONT,
-            ),
-            **_horizontal_bar_axis(tc["Count"].max())))
+            **_horizontal_bar_axis(tc["Count"].max(), title="Number of reviews mentioning this theme")))
         st.plotly_chart(fig_bar, use_container_width=True)
         _chart_download(fig_bar, "negative_themes.png", "Download themes chart")
 
@@ -1185,11 +1199,7 @@ def page_neutral(df):
                          color_discrete_sequence=["#6b7280"])
         fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
         fig_bar.update_layout(**_base_layout(
-            xaxis=dict(
-                title=dict(text="Number of reviews mentioning this theme", font=AXIS_TITLE_FONT),
-                tickfont=TICK_FONT,
-            ),
-            **_horizontal_bar_axis(tc["Count"].max())))
+            **_horizontal_bar_axis(tc["Count"].max(), title="Number of reviews mentioning this theme")))
         st.plotly_chart(fig_bar, use_container_width=True)
         _chart_download(fig_bar, "neutral_themes.png", "Download themes chart")
 
@@ -1239,12 +1249,8 @@ def page_themes(df):
                            color_continuous_scale="Viridis")
     fig_theme_bar.update_traces(marker_line_color="white", marker_line_width=1)
     fig_theme_bar.update_layout(**_base_layout(
-        xaxis=dict(
-            title=dict(text="Number of mentions", font=AXIS_TITLE_FONT),
-            tickfont=TICK_FONT,
-        ),
         coloraxis_showscale=False,
-        **_horizontal_bar_axis(theme_counts["Count"].max())))
+        **_horizontal_bar_axis(theme_counts["Count"].max(), title="Number of mentions")))
     st.plotly_chart(fig_theme_bar, use_container_width=True)
     _chart_download(fig_theme_bar, "top_themes.png", "Download themes chart")
 
@@ -1307,11 +1313,7 @@ def page_themes(df):
                 fig3 = px.bar(pf, x="Count", y="Phrase", orientation="h")
                 fig3.update_traces(marker_line_color="white", marker_line_width=1)
                 fig3.update_layout(**_base_layout(
-                    xaxis=dict(
-                        title=dict(text="Mentions", font=AXIS_TITLE_FONT),
-                        tickfont=TICK_FONT,
-                    ),
-                    **_horizontal_bar_axis(pf["Count"].max())))
+                    **_horizontal_bar_axis(pf["Count"].max(), title="Mentions")))
                 st.plotly_chart(fig3, use_container_width=True)
         except Exception as e:
             st.info(f"Could not extract phrases: {e}")
