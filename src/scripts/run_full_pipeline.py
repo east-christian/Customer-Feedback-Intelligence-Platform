@@ -1229,15 +1229,6 @@ def main():
         st.success("App cache cleared.")
         st.rerun()
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### ℹ️ Pipeline")
-    st.sidebar.markdown("""
-    1. **ML Model** — predicts sentiment
-    2. **LLM** — extracts themes (Gemma 2 via Ollama)
-    3. **Statistical Analysis** — trends & spikes
-    4. **Visualization** — interactive dashboards
-    """)
-
     if uploaded_file and run_button:
         try:
             df = pd.read_csv(uploaded_file)
@@ -1251,7 +1242,7 @@ def main():
     if "analyzed_df" in st.session_state:
         render_dashboard(st.session_state.analyzed_df)
     elif not uploaded_file:
-        st.info("👈 Upload a CSV file in the sidebar and click **Run Analysis** to begin.")
+        st.info("Upload a CSV file in the sidebar and click **Run Analysis** to begin.")
 
 
 if __name__ == "__main__":
