@@ -1205,197 +1205,259 @@ def page_outliers(df):
             st.info("No mixed-signal reviews detected in this dataset.")
 
 
-def page_methodology():
-    st.markdown("## About & Methodology")
+def page_csv_builder():
+    st.markdown("## Build a CSV from Reviews")
     st.write(
-        "This page explains how the Customer Feedback Intelligence Platform works — "
-        "what happens behind the scenes when you upload a CSV and click Run Analysis."
+        "Paste reviews you collected from Yelp or any other source below. "
+        "The platform will convert them into a properly formatted CSV file "
+        "ready to upload for analysis."
     )
 
-    # ── Overview ───────────────────────────────────────────────────────────────
+    # ── How to collect from Yelp ───────────────────────────────────────────────
+    with st.expander("How to collect reviews from Yelp — step by step", expanded=False):
+        st.markdown(
+            """
+            **Step 1 — Find the business on Yelp**
+            Go to [yelp.com](https://www.yelp.com) and search for the business
+            you want to analyse, e.g. *"Starbucks New Orleans"*.
+
+            **Step 2 — Open the Reviews section**
+            Click on a business listing. Scroll down past the photos and business
+            info until you see the reviews section.
+
+            **Step 3 — Copy each review**
+            Click *"Read more"* on any review that is cut off so you get the full text.
+            Select the review text, copy it, and paste it into the text area below.
+            Repeat for as many reviews as you need. You can paste all of them at once —
+            one review per line, or separated by blank lines.
+
+            **Step 4 — Note the star rating**
+            Each review on Yelp shows a 1–5 star rating. Note the rating alongside
+            each review when you paste it — you can enter star ratings in the table below.
+
+            **Step 5 — Use Instant Data Scraper (faster method)**
+            - Install the free Chrome extension **Instant Data Scraper**
+            - Go to the Yelp reviews page
+            - Click the extension icon — it auto-detects the review table
+            - Click **Start Crawling** to load all pages
+            - Click **Download CSV** — the extension exports all reviews directly
+            - Rename the review text column to `text` and the rating column to `stars`
+            before uploading to this platform
+
+            **Step 6 — Generate and download your CSV**
+            Paste your reviews in the box below, fill in star ratings and dates
+            (optional), then click **Generate CSV** to download a ready-to-use file.
+            """
+        )
+
     st.markdown("---")
-    st.markdown("### Platform Overview")
+    st.markdown("### Paste Your Reviews")
+    st.write(
+        "Paste one review per line. Blank lines between reviews are fine — "
+        "the platform will clean them up automatically."
+    )
+
+    raw_text = st.text_area(
+        "Reviews (one per line):",
+        height=250,
+        placeholder="Great coffee, the staff was super friendly and the place was clean!\nWaited 20 minutes for a simple latte. Very disappointed.\nAverage experience, nothing special but nothing terrible either.",
+        key="csv_raw_text",
+    )
+
+    st.markdown("### Optional Details")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        default_stars = st.selectbox(
+            "Default star rating (applied to all if not set individually):",
+            options=[None, 1, 2, 3, 4, 5],
+            index=0,
+            format_func=lambda x: "No default" if x is None else f"{x} stars",
+            key="default_stars",
+        )
+    with col2:
+        default_date = st.text_input(
+            "Default date (YYYY-MM-DD, optional):",
+            placeholder="e.g. 2024-06-15",
+            key="default_date",
+        )
+    with col3:
+        business_name = st.text_input(
+            "Business name (optional, added as a column):",
+            placeholder="e.g. Starbucks",
+            key="business_name",
+        )
+
+    st.markdown("---")
+
+    if st.button("Generate CSV", key="gen_csv_btn", use_container_width=True):
+        if not raw_text.strip():
+            st.warning("Please paste at least one review before generating the CSV.")
+        else:
+            # Split into individual reviews — split on blank lines or newlines
+            lines = [l.strip() for l in raw_text.strip().splitlines()]
+            reviews = [l for l in lines if l]  # remove empty lines
+
+            if not reviews:
+                st.warning("No reviews detected. Make sure each review is on its own line.")
+            else:
+                rows = []
+                for i, review in enumerate(reviews):
+                    row = {"text": review}
+                    if default_stars is not None:
+                        row["stars"] = default_stars
+                    if default_date.strip():
+                        row["date"] = default_date.strip()
+                    if business_name.strip():
+                        row["business"] = business_name.strip()
+                    rows.append(row)
+
+                out_df = pd.DataFrame(rows)
+                csv_bytes = out_df.to_csv(index=False).encode("utf-8")
+
+                st.success(f"{len(out_df)} reviews ready — click below to download.")
+                st.dataframe(out_df.head(10), use_container_width=True)
+
+                st.download_button(
+                    label=f"Download CSV ({len(out_df)} reviews)",
+                    data=csv_bytes,
+                    file_name=f"reviews_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    key="dl_generated_csv",
+                )
+                st.info(
+                    "Once downloaded, go back to the **Upload & Run** section in the sidebar, "
+                    "upload this CSV file, and click **Run Analysis**."
+                )
+
+    st.markdown("---")
+    st.markdown("### CSV Format Reference")
+    st.write("If you already have a spreadsheet of reviews, make sure it has at least a `text` column. "
+             "The optional columns below add more detail to the analysis.")
+    st.dataframe(
+        pd.DataFrame({
+            "Column":      ["text", "stars", "date", "business"],
+            "Required":    ["Yes", "No", "No", "No"],
+            "Example":     ["Great coffee!", "4", "2024-06-15", "Starbucks"],
+            "Description": [
+                "The review text — this is what the model analyses",
+                "Star rating 1–5 — used for model training and star breakdown charts",
+                "Date of the review — enables time trend charts",
+                "Business name — useful when comparing multiple locations",
+            ],
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+def page_methodology():
+    st.markdown("## About & Methodology")
+
+    # ── Credits ────────────────────────────────────────────────────────────────
+    st.markdown(
+        '<div style="background:#f0f4ff; border-left:4px solid #1e3a5f; '
+        'padding:18px 22px; border-radius:8px; margin-bottom:16px;">'
+        '<p style="font-size:17px; font-weight:700; color:#1e3a5f; margin:0 0 6px 0;">'
+        'Project By Group 5</p>'
+        '<p style="font-size:15px; color:#374151; margin:0 0 10px 0;">'
+        'Christian East &nbsp;·&nbsp; Birajman Tamang &nbsp;·&nbsp; Kelsang Yonjan</p>'
+        '<p style="font-size:14px; color:#6b7280; margin:0 0 4px 0;">'
+        '<strong>CSCI 491</strong></p>'
+        '<p style="font-size:14px; color:#6b7280; margin:0;">'
+        'Special thanks to <strong>Dr. Jennifer Lavergne</strong> and '
+        '<strong>Dr. Lasang Tamang</strong></p>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    # ── What it does ───────────────────────────────────────────────────────────
+    st.markdown("### What This Platform Does")
     st.markdown(
         """
-        The platform combines two AI techniques to analyse customer reviews:
+        The Customer Feedback Intelligence Platform analyses customer reviews using two AI systems:
 
-        1. **Sentiment Classification** — a Machine Learning model trained on thousands
-           of labelled reviews to predict whether a review is positive, negative, or neutral.
-
-        2. **Theme Extraction** — a locally-running Large Language Model (LLM) that reads
-           each review and assigns it to one or more business topics (themes) from a
-           predefined list.
-
-        Together these two systems turn raw unstructured text into structured, actionable
-        business intelligence — without sending any data to the internet.
+        - **Sentiment Classification** — predicts whether a review is positive, negative, or neutral
+        - **Theme Extraction** — identifies which business topics each review is about
         """
     )
 
     # ── Sentiment Model ────────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("### Sentiment Classification Model")
-
+    st.markdown("### Sentiment Model")
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**Algorithm**")
-        st.info("Logistic Regression")
-        st.markdown("**Text Vectorization**")
-        st.info("TF-IDF (Term Frequency – Inverse Document Frequency)")
-        st.markdown("**Training Split**")
-        st.info("80% training / 20% testing")
-
+        st.markdown("**Algorithm:** Logistic Regression")
+        st.markdown("**Vectorizer:** TF-IDF (5,000 features, 1–2 word phrases)")
+        st.markdown("**Training split:** 80% train / 20% test")
     with col2:
-        st.markdown("**Vocabulary Size**")
-        st.info("5,000 most significant terms")
-        st.markdown("**N-gram Range**")
-        st.info("Unigrams and bigrams (1–2 word phrases)")
-        st.markdown("**Classes**")
-        st.info("Positive · Negative · Neutral/Mixed")
+        st.markdown("**Classes:** Positive · Negative · Neutral/Mixed")
+        st.markdown("**Mixed-signal detection:** contrast words + dual polarity vocabulary")
+        st.markdown("**Confidence score:** model's probability for its predicted class")
 
-    st.markdown("**How it works step by step:**")
     st.markdown(
         """
-        1. Each review is cleaned — lowercased, punctuation removed, stopwords stripped
-        2. The cleaned text is converted to a numerical vector using TF-IDF, which captures
-           how important each word is relative to the full dataset
-        3. The Logistic Regression model calculates a probability for each class
-           (positive, negative, neutral)
-        4. The class with the highest probability becomes the predicted sentiment
-        5. The highest probability value becomes the **confidence score**
-        """
-    )
-
-    st.markdown("**What is TF-IDF?**")
-    st.markdown(
-        """
-        TF-IDF stands for Term Frequency – Inverse Document Frequency. It gives each word
-        a weight based on two factors:
-        - **Term Frequency** — how often the word appears in this review
-        - **Inverse Document Frequency** — how rare the word is across all reviews
-
-        Words that appear in every review (like "the", "and") get very low weights.
-        Words that appear often in one review but rarely in others (like "disgusting" or
-        "phenomenal") get high weights — these are the words that actually carry meaning.
-        """
-    )
-
-    # ── Confidence Score ───────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### Confidence Score")
-    st.markdown(
-        """
-        The confidence score is the model's probability estimate for its predicted class,
-        expressed as a percentage.
-
+        **Confidence score guide:**
         | Score | Meaning |
         |---|---|
-        | 90–100% | Very certain — the review strongly signals one sentiment |
-        | 70–89%  | Confident — clear sentiment with minor ambiguity |
-        | 60–69%  | Moderate — some mixed signals in the review |
-        | Below 60% | Low confidence — review may be ambiguous or mixed |
-
-        A score of 50% means the model was essentially guessing between two classes.
-        Reviews below 60% confidence appear in the **Outliers** tab for manual inspection.
-        """
-    )
-
-    # ── Mixed Signal Detection ─────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### Mixed-Signal Detection")
-    st.markdown(
-        """
-        Some reviews contain both positive and negative language — for example:
-        *"Great coffee but the service was terrible."*
-
-        The platform flags these using a rule-based system that checks for:
-        - **Contrast words** — but, however, although, though, yet, except, overall
-        - **Dual polarity vocabulary** — the review contains both positive cues
-          (great, love, excellent) and negative cues (bad, rude, awful)
-        - **Probability proximity** — the model's positive and negative probability
-          scores are both above 30% and within 25% of each other
-
-        If a review meets these conditions it is flagged as `is_mixed = True` and
-        highlighted in the Neutral Reviews and Outliers tabs.
+        | 90–100% | Very certain |
+        | 70–89% | Confident |
+        | 60–69% | Moderate |
+        | Below 60% | Low — flagged in Outliers tab |
         """
     )
 
     # ── Theme Extraction ───────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### Theme Extraction")
+    st.markdown(
+        """
+        Reviews are sent in batches to a locally-running LLM (Gemma 3 4B via Ollama).
+        The model assigns 1–3 themes per review from the approved list only — any invented
+        themes are rejected and retried up to 5 times. Results are cached so the same CSV
+        skips LLM processing on re-upload.
 
-    col3, col4 = st.columns(2)
-    with col3:
-        st.markdown("**LLM Model**")
-        st.info("Gemma 3 4B (Google, runs locally via Ollama)")
-        st.markdown("**Batch Size**")
-        st.info("30 reviews per LLM call")
-        st.markdown("**Max Retries**")
-        st.info("5 retries per batch before marking as failed")
-
-    with col4:
-        st.markdown("**Processing**")
-        st.info("Parallel batches (2 workers)")
-        st.markdown("**Hallucination Guard**")
-        st.info("Only themes from the approved list are accepted")
-        st.markdown("**Caching**")
-        st.info("Results cached — same CSV skips LLM on re-upload")
-
-    st.markdown("**The 8 business themes:**")
+        **The 8 themes:**
+        """
+    )
     theme_descriptions = {
-        "Product Quality":      "Taste, freshness, item quality, food or drink standards",
-        "Product Availability": "Out of stock items, limited menu, seasonal unavailability",
-        "Customer Service":     "Staff attitude, helpfulness, friendliness, complaint handling",
-        "Speed of Service":     "Wait times, queue length, drive-thru speed, order delays",
-        "Store Environment":    "Cleanliness, atmosphere, seating, noise, parking, location",
-        "Price & Value":        "Cost, affordability, value for money, pricing fairness",
-        "Digital & Rewards":    "App functionality, online ordering, loyalty points, deals",
-        "Policies & Safety":    "Return policies, hygiene standards, health precautions",
+        "Product Quality":      "Food, drink, or item quality and standards",
+        "Product Availability": "Out of stock items or limited menu",
+        "Customer Service":     "Staff attitude, helpfulness, complaint handling",
+        "Speed of Service":     "Wait times, queue length, order delays",
+        "Store Environment":    "Cleanliness, atmosphere, seating, parking",
+        "Price & Value":        "Cost, affordability, value for money",
+        "Digital & Rewards":    "App, online ordering, loyalty points",
+        "Policies & Safety":    "Return policies, hygiene, health precautions",
     }
     for theme, desc in theme_descriptions.items():
         st.markdown(
             f'<div style="background:#f8f9fa; border-left:3px solid #1e3a5f; '
-            f'padding:10px 14px; border-radius:4px; margin-bottom:6px;">'
+            f'padding:8px 14px; border-radius:4px; margin-bottom:5px;">'
             f'<strong style="color:#1e3a5f;">{theme}</strong> — '
             f'<span style="color:#374151; font-size:14px;">{desc}</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-    # ── Data Privacy ───────────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### Data Privacy")
-    st.markdown(
-        """
-        All processing happens **entirely on your local machine**. No review data is
-        sent to any external server or cloud API.
-
-        - The sentiment model runs locally using scikit-learn
-        - The LLM (Gemma 3 4B) runs locally via Ollama
-        - PDF reports are generated locally using ReportLab
-        - No internet connection is required after initial setup
-        """
-    )
-
-    # ── Tech Stack ─────────────────────────────────────────────────────────────
+    # ── Tech Stack & Privacy ───────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### Technology Stack")
-
     tc1, tc2, tc3 = st.columns(3)
     with tc1:
-        st.markdown("**Machine Learning**")
-        st.markdown("- scikit-learn\n- Logistic Regression\n- TF-IDF Vectorizer\n- joblib (model persistence)")
+        st.markdown("**ML**\nscikit-learn · Logistic Regression · TF-IDF")
     with tc2:
-        st.markdown("**LLM & NLP**")
-        st.markdown("- Ollama (local LLM server)\n- Gemma 3 4B\n- ThreadPoolExecutor\n- JSON parsing")
+        st.markdown("**LLM**\nOllama · Gemma 3 4B · Python threading")
     with tc3:
-        st.markdown("**Dashboard & Export**")
-        st.markdown("- Streamlit\n- Plotly\n- ReportLab\n- pandas")
+        st.markdown("**Dashboard**\nStreamlit · Plotly · ReportLab · pandas")
 
     st.markdown("---")
-    st.caption(
-        "Customer Feedback Intelligence Platform — "
-        "Built with Python · scikit-learn · Ollama · Streamlit"
+    st.info(
+        "All processing runs entirely on your local machine. "
+        "No review data is sent to any external server or cloud API."
     )
+    st.caption("Customer Feedback Intelligence Platform — CSCI 491 · Group 5")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1443,9 +1505,10 @@ def main():
     if "analyzed_df" in st.session_state:
         df = st.session_state.analyzed_df
         st.markdown("---")
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
             "Overview", "Positive Reviews", "Neutral Reviews",
-            "Negative Reviews", "Theme Extraction", "Outliers", "About",
+            "Negative Reviews", "Theme Extraction", "Outliers",
+            "Build CSV", "About",
         ])
         with tab1: page_overview(df)
         with tab2: page_positive(df)
@@ -1453,12 +1516,41 @@ def main():
         with tab4: page_negative(df)
         with tab5: page_themes(df)
         with tab6: page_outliers(df)
-        with tab7: page_methodology()
+        with tab7: page_csv_builder()
+        with tab8: page_methodology()
 
     elif not uploaded_file:
-        st.info("Upload a CSV file in the sidebar and click Run Analysis to get started.")
         st.markdown("---")
-        page_methodology()
+        # Front page — two sections side by side
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown(
+                '<div style="background:#f0fdf4; border:1px solid #bbf7d0; '
+                'border-radius:10px; padding:22px 24px;">'
+                '<h3 style="color:#16a34a; margin-top:0;">Already have a CSV?</h3>'
+                '<p style="color:#374151;">Upload your review CSV in the sidebar '
+                'and click <strong>Run Analysis</strong> to get started.<br><br>'
+                'Your CSV needs a <code>text</code> column containing the review text. '
+                'Optional columns: <code>stars</code>, <code>date</code>.</p>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        with col_b:
+            st.markdown(
+                '<div style="background:#eff6ff; border:1px solid #bfdbfe; '
+                'border-radius:10px; padding:22px 24px;">'
+                '<h3 style="color:#2563eb; margin-top:0;">Need to collect reviews first?</h3>'
+                '<p style="color:#374151;">Use the <strong>Build CSV</strong> tab below '
+                'to paste reviews from Yelp or any source and convert them into a '
+                'ready-to-use CSV file.<br><br>'
+                'Step-by-step Yelp collection guide is included.</p>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown("---")
+        tab_a, tab_b = st.tabs(["Build CSV", "About"])
+        with tab_a: page_csv_builder()
+        with tab_b: page_methodology()
 
 
 if __name__ == "__main__":
