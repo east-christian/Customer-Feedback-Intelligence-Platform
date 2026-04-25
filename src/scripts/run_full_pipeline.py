@@ -415,22 +415,27 @@ def _report_download(df, key):
     """Renders a Generate Report button that produces a full PDF of all results."""
     st.markdown("---")
     st.markdown("**Download Report**")
+
+    pdf_key = f"pdf_bytes_{key}"
+
     if st.button("Generate Report", key=f"gen_{key}"):
         with st.spinner("Building report..."):
             try:
-                pdf_bytes = _build_overview_pdf(df)
-                st.download_button(
-                    label="Download PDF Report",
-                    data=pdf_bytes,
-                    file_name=f"customer_feedback_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                    mime="application/pdf",
-                    key=f"dl_{key}",
-                )
-                st.success("Report ready — click Download PDF Report above.")
+                st.session_state[pdf_key] = _build_overview_pdf(df)
             except Exception as e:
                 st.error(f"Report generation failed: {e}")
                 st.info("Make sure reportlab and kaleido are installed:\n"
                         "pip install reportlab kaleido")
+
+    if pdf_key in st.session_state:
+        st.download_button(
+            label="Download PDF Report",
+            data=st.session_state[pdf_key],
+            file_name=f"customer_feedback_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            key=f"dl_{key}",
+        )
+        st.success("Report ready — click Download PDF Report above.")
 
 
 # ── Overview PDF builder ───────────────────────────────────────────────────────
@@ -680,25 +685,23 @@ def page_overview(df):
 
     with col_pdf:
         if st.button("Generate PDF Report", key="gen_pdf_overview"):
-            with st.spinner("Building PDF report..."):
+            with st.spinner("Building report..."):
                 try:
-                    pdf_bytes = _build_overview_pdf(df)
-                    st.download_button(
-                        label="Download PDF Report",
-                        data=pdf_bytes,
-                        file_name=f"overview_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                        mime="application/pdf",
-                        key="dl_pdf_overview",
-                    )
-                    st.success("PDF ready — click Download PDF Report above.")
+                    st.session_state["pdf_bytes_overview"] = _build_overview_pdf(df)
                 except Exception as e:
                     st.error(f"PDF generation failed: {e}")
-                    st.info(
-                        "Make sure reportlab is installed:\n"
-                        "pip install reportlab\n\n"
-                        "For charts inside the PDF also run:\n"
-                        "pip install kaleido"
-                    )
+                    st.info("Make sure reportlab and kaleido are installed:\n"
+                            "pip install reportlab kaleido")
+
+        if "pdf_bytes_overview" in st.session_state:
+            st.download_button(
+                label="Download PDF Report",
+                data=st.session_state["pdf_bytes_overview"],
+                file_name=f"overview_report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                key="dl_pdf_overview",
+            )
+            st.success("PDF ready — click Download PDF Report above.")
 
 
 def page_positive(df):
