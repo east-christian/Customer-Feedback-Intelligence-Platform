@@ -390,82 +390,208 @@ Write exactly 3 short paragraphs:
 
 METRIC_CSS = """
 <style>
-/* ── Global font size increase ── */
+/* ── Import clean font ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ── Global ── */
 html, body, [class*="css"] {
-    font-size: 19px !important;
-}
-.stMarkdown p, .stMarkdown li {
-    font-size: 19px !important;
-    line-height: 1.8 !important;
-}
-.stMarkdown h1 { font-size: 2.4rem !important; }
-.stMarkdown h2 { font-size: 2.0rem !important; }
-.stMarkdown h3 { font-size: 1.6rem !important; }
-label, .stSelectbox label, .stTextInput label,
-.stSlider label, .stCheckbox label,
-.stTextArea label { font-size: 18px !important; }
-.stButton button { font-size: 18px !important; }
-.stDataFrame, .stTable { font-size: 17px !important; }
-.stCaption, [data-testid="stCaptionContainer"] {
-    font-size: 15px !important;
-}
-.stTab button { font-size: 18px !important; font-weight: 500 !important; }
-.stSelectbox div, .stTextInput input, .stTextArea textarea {
-    font-size: 18px !important;
-}
-.stExpander summary { font-size: 18px !important; }
-.stInfo, .stSuccess, .stWarning, .stError {
+    font-family: 'Inter', sans-serif !important;
     font-size: 17px !important;
 }
+.stMarkdown p, .stMarkdown li {
+    font-size: 17px !important;
+    line-height: 1.8 !important;
+    color: #1f2937 !important;
+}
+.stMarkdown h1 { font-size: 2.2rem !important; font-weight: 700 !important; color: #1e3a5f !important; }
+.stMarkdown h2 { font-size: 1.8rem !important; font-weight: 700 !important; color: #1e3a5f !important; }
+.stMarkdown h3 { font-size: 1.4rem !important; font-weight: 600 !important; color: #1e3a5f !important; }
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1e3a5f 0%, #065a82 100%) !important;
+}
+[data-testid="stSidebar"] * { color: #ffffff !important; }
+[data-testid="stSidebar"] .stButton button {
+    background-color: #ffffff !important;
+    color: #1e3a5f !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+    border: none !important;
+    font-size: 16px !important;
+}
+[data-testid="stSidebar"] .stButton button:hover {
+    background-color: #e0f2fe !important;
+}
+
+/* ── Tab bar ── */
+.stTabs [data-baseweb="tab-list"] {
+    background-color: #f0f4ff !important;
+    border-radius: 10px !important;
+    padding: 4px !important;
+    gap: 4px !important;
+}
+.stTabs [data-baseweb="tab"] {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: #374151 !important;
+    border-radius: 8px !important;
+    padding: 8px 18px !important;
+}
+.stTabs [aria-selected="true"] {
+    background-color: #1e3a5f !important;
+    color: #ffffff !important;
+}
+
+/* ── Buttons ── */
+.stButton button {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    border: 2px solid #1e3a5f !important;
+    color: #1e3a5f !important;
+    background-color: #ffffff !important;
+    padding: 8px 20px !important;
+    transition: all 0.2s ease !important;
+}
+.stButton button:hover {
+    background-color: #1e3a5f !important;
+    color: #ffffff !important;
+}
+
+/* ── Inputs ── */
+.stTextInput input, .stTextArea textarea, .stSelectbox div {
+    font-size: 16px !important;
+    border-radius: 8px !important;
+    border: 1.5px solid #d1d5db !important;
+}
+label, .stSelectbox label, .stTextInput label,
+.stSlider label, .stCheckbox label,
+.stTextArea label {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    color: #374151 !important;
+}
+
+/* ── Expander ── */
+.stExpander {
+    border: 1.5px solid #e5e7eb !important;
+    border-radius: 10px !important;
+}
+.stExpander summary {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    color: #1e3a5f !important;
+}
+
+/* ── Alert boxes ── */
+.stInfo  { font-size: 16px !important; border-radius: 8px !important; }
+.stSuccess { font-size: 16px !important; border-radius: 8px !important; }
+.stWarning { font-size: 16px !important; border-radius: 8px !important; }
+.stError   { font-size: 16px !important; border-radius: 8px !important; }
+
+/* ── Dataframe ── */
+.stDataFrame { font-size: 15px !important; border-radius: 8px !important; }
+
+/* ── Caption ── */
+.stCaption, [data-testid="stCaptionContainer"] { font-size: 14px !important; color: #6b7280 !important; }
 
 /* ── Metric cards ── */
 [data-testid="stMetric"] {
-    background-color: #f8f9fa; border: 1px solid #e9ecef;
-    border-radius: 8px; padding: 16px; min-height: 110px;
+    background: linear-gradient(135deg, #ffffff 0%, #f0f4ff 100%);
+    border: 1.5px solid #c7d7f0;
+    border-radius: 12px;
+    padding: 20px;
+    min-height: 115px;
+    box-shadow: 0 2px 8px rgba(30,58,95,0.08);
 }
-[data-testid="stMetricLabel"] { font-size: 15px !important; font-weight: 600; color: #6b7280; }
-[data-testid="stMetricValue"] { font-size: 32px !important; font-weight: 700; }
-[data-testid="stMetricDelta"] { font-size: 14px !important; color: #6b7280 !important; }
+[data-testid="stMetricLabel"] {
+    font-size: 14px !important; font-weight: 600 !important; color: #6b7280 !important;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+[data-testid="stMetricValue"] { font-size: 30px !important; font-weight: 700 !important; color: #1e3a5f !important; }
+[data-testid="stMetricDelta"] { font-size: 13px !important; color: #6b7280 !important; }
 [data-testid="stMetricDelta"] svg { display: none; }
+
+/* ── Main content area background ── */
+.main .block-container {
+    padding-top: 2rem !important;
+    max-width: 1200px !important;
+}
 </style>
 """
 
 
 # ── Chart / axis helpers ───────────────────────────────────────────────────────
 
+CHART_FONT = dict(family="Inter, sans-serif", size=14, color="#1f2937")
+AXIS_TITLE_FONT = dict(family="Inter, sans-serif", size=15, color="#1e3a5f")
+TICK_FONT = dict(family="Inter, sans-serif", size=13, color="#374151")
+
 def _vertical_bar_axis():
     return dict(
-        xaxis=dict(tickformat=".0%", range=[-0.05, 1.05],
-                   tickvals=[i/10 for i in range(0,11)],
-                   ticktext=[f"{i*10}%" for i in range(0,11)], title_standoff=10),
-        yaxis=dict(rangemode="tozero", dtick=1, tickformat="d"),
+        xaxis=dict(
+            tickformat=".0%",
+            range=[-0.05, 1.05],
+            tickvals=[i/10 for i in range(0, 11)],
+            ticktext=[f"{i*10}%" for i in range(0, 11)],
+            tickfont=TICK_FONT,
+            title_standoff=12,
+        ),
+        yaxis=dict(
+            rangemode="tozero", dtick=1, tickformat="d",
+            tickfont=TICK_FONT,
+        ),
     )
 
 def _horizontal_bar_axis(max_val):
-    nice_max = max(1, int(max_val)+1)
-    step = max(1, int(nice_max/8))
+    nice_max = max(1, int(max_val) + 1)
+    step = max(1, int(nice_max / 8))
     return dict(
-        xaxis=dict(range=[0, nice_max+step*0.5], tick0=0, dtick=step,
-                   tickformat="d", rangemode="tozero"),
-        yaxis=dict(categoryorder="total ascending"),
+        xaxis=dict(
+            range=[0, nice_max + step * 0.5],
+            tick0=0, dtick=step, tickformat="d",
+            rangemode="tozero", tickfont=TICK_FONT,
+        ),
+        yaxis=dict(
+            categoryorder="total ascending",
+            tickfont=TICK_FONT,
+        ),
     )
 
 def _base_layout(**extra):
-    layout = dict(paper_bgcolor="white", plot_bgcolor="white",
-                  margin=dict(l=10, r=20, t=45, b=70), bargap=0.2, bargroupgap=0.05)
+    layout = dict(
+        paper_bgcolor="white",
+        plot_bgcolor="#fafbff",
+        margin=dict(l=10, r=20, t=55, b=80),
+        bargap=0.2,
+        bargroupgap=0.05,
+        font=CHART_FONT,
+        title_font=dict(family="Inter, sans-serif", size=17, color="#1e3a5f"),
+        legend=dict(
+            font=dict(family="Inter, sans-serif", size=13, color="#374151"),
+            bgcolor="rgba(255,255,255,0.9)",
+            bordercolor="#e5e7eb",
+            borderwidth=1,
+        ),
+    )
     layout.update(extra)
     return layout
 
 def _hist_yaxis(df):
     n = len(df)
-    est_max = max(20, n//4)
-    ceiling = ((est_max//20)+1)*20
-    return dict(rangemode="tozero", dtick=20, tickformat="d", range=[0, ceiling])
+    est_max = max(20, n // 4)
+    ceiling = ((est_max // 20) + 1) * 20
+    return dict(
+        rangemode="tozero", dtick=20, tickformat="d",
+        range=[0, ceiling], tickfont=TICK_FONT,
+    )
 
 def _chart_download(fig, filename, label="Download chart as PNG"):
     try:
         png_bytes = fig.to_image(format="png", scale=2)
-        st.download_button(label=label, data=png_bytes, file_name=filename, mime="image/png")
+        st.download_button(label=label, data=png_bytes,
+                           file_name=filename, mime="image/png")
     except Exception:
         st.caption("Install kaleido for chart downloads: pip install kaleido")
 
@@ -761,9 +887,20 @@ def page_overview(df):
                 fig_trend = px.line(td, x="date", y="count", color="predicted_sentiment",
                                     title="Sentiment Over Time", color_discrete_map=COLOUR_MAP)
                 fig_trend.update_layout(**_base_layout(
-                    xaxis_title="Date", yaxis_title="Number of Reviews",
-                    legend_title_text="Sentiment",
-                    yaxis=dict(rangemode="tozero", range=[0,None], dtick=1, tickformat="d")))
+                    xaxis=dict(
+                        title=dict(text="Date", font=AXIS_TITLE_FONT),
+                        tickfont=TICK_FONT,
+                    ),
+                    yaxis=dict(
+                        title=dict(text="Number of Reviews", font=AXIS_TITLE_FONT),
+                        rangemode="tozero", range=[0, None],
+                        dtick=1, tickformat="d", tickfont=TICK_FONT,
+                    ),
+                    legend=dict(
+                        title=dict(text="Sentiment", font=AXIS_TITLE_FONT),
+                        font=TICK_FONT,
+                    ),
+                ))
                 st.plotly_chart(fig_trend, use_container_width=True)
                 _chart_download(fig_trend, "sentiment_trend.png", "Download trend chart")
             else:
@@ -902,12 +1039,18 @@ def page_positive(df):
         fig_hist.update_traces(marker_line_color="white", marker_line_width=2,
                                xbins=dict(start=0.0, end=1.0, size=0.10))
         fig_hist.update_layout(**_base_layout(
-            xaxis_title="Model Confidence Score (higher = more certain)",
-            yaxis_title="Number of Reviews",
-            xaxis=dict(tickformat=".0%", range=[-0.05,1.05],
-                       tickvals=[i/10 for i in range(0,11)],
-                       ticktext=[f"{i*10}%" for i in range(0,11)]),
-            yaxis=_hist_yaxis(pos_df)))
+            xaxis=dict(
+                title=dict(text="Model Confidence Score (higher = more certain)", font=AXIS_TITLE_FONT),
+                tickformat=".0%", range=[-0.05, 1.05],
+                tickvals=[i/10 for i in range(0, 11)],
+                ticktext=[f"{i*10}%" for i in range(0, 11)],
+                tickfont=TICK_FONT,
+            ),
+            yaxis=dict(
+                title=dict(text="Number of Reviews", font=AXIS_TITLE_FONT),
+                **_hist_yaxis(pos_df),
+            ),
+        ))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "positive_confidence.png", "Download confidence chart")
 
@@ -920,7 +1063,10 @@ def page_positive(df):
                          color_discrete_sequence=["#16a34a"])
         fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
         fig_bar.update_layout(**_base_layout(
-            xaxis_title="Number of reviews mentioning this theme",
+            xaxis=dict(
+                title=dict(text="Number of reviews mentioning this theme", font=AXIS_TITLE_FONT),
+                tickfont=TICK_FONT,
+            ),
             **_horizontal_bar_axis(tc["Count"].max())))
         st.plotly_chart(fig_bar, use_container_width=True)
         _chart_download(fig_bar, "positive_themes.png", "Download themes chart")
@@ -948,12 +1094,18 @@ def page_negative(df):
         fig_hist.update_traces(marker_line_color="white", marker_line_width=2,
                                xbins=dict(start=0.0, end=1.0, size=0.10))
         fig_hist.update_layout(**_base_layout(
-            xaxis_title="Model Confidence Score (higher = more certain)",
-            yaxis_title="Number of Reviews",
-            xaxis=dict(tickformat=".0%", range=[-0.05,1.05],
-                       tickvals=[i/10 for i in range(0,11)],
-                       ticktext=[f"{i*10}%" for i in range(0,11)]),
-            yaxis=_hist_yaxis(neg_df)))
+            xaxis=dict(
+                title=dict(text="Model Confidence Score (higher = more certain)", font=AXIS_TITLE_FONT),
+                tickformat=".0%", range=[-0.05, 1.05],
+                tickvals=[i/10 for i in range(0, 11)],
+                ticktext=[f"{i*10}%" for i in range(0, 11)],
+                tickfont=TICK_FONT,
+            ),
+            yaxis=dict(
+                title=dict(text="Number of Reviews", font=AXIS_TITLE_FONT),
+                **_hist_yaxis(neg_df),
+            ),
+        ))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "negative_confidence.png", "Download confidence chart")
 
@@ -966,7 +1118,10 @@ def page_negative(df):
                          color_discrete_sequence=["#dc2626"])
         fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
         fig_bar.update_layout(**_base_layout(
-            xaxis_title="Number of reviews mentioning this theme",
+            xaxis=dict(
+                title=dict(text="Number of reviews mentioning this theme", font=AXIS_TITLE_FONT),
+                tickfont=TICK_FONT,
+            ),
             **_horizontal_bar_axis(tc["Count"].max())))
         st.plotly_chart(fig_bar, use_container_width=True)
         _chart_download(fig_bar, "negative_themes.png", "Download themes chart")
@@ -995,12 +1150,18 @@ def page_neutral(df):
         fig_hist.update_traces(marker_line_color="white", marker_line_width=2,
                                xbins=dict(start=0.0, end=1.0, size=0.10))
         fig_hist.update_layout(**_base_layout(
-            xaxis_title="Model Confidence Score (higher = more certain it is neutral)",
-            yaxis_title="Number of Reviews",
-            xaxis=dict(tickformat=".0%", range=[-0.05,1.05],
-                       tickvals=[i/10 for i in range(0,11)],
-                       ticktext=[f"{i*10}%" for i in range(0,11)]),
-            yaxis=_hist_yaxis(neu_df)))
+            xaxis=dict(
+                title=dict(text="Model Confidence Score (higher = more certain it is neutral)", font=AXIS_TITLE_FONT),
+                tickformat=".0%", range=[-0.05, 1.05],
+                tickvals=[i/10 for i in range(0, 11)],
+                ticktext=[f"{i*10}%" for i in range(0, 11)],
+                tickfont=TICK_FONT,
+            ),
+            yaxis=dict(
+                title=dict(text="Number of Reviews", font=AXIS_TITLE_FONT),
+                **_hist_yaxis(neu_df),
+            ),
+        ))
         st.plotly_chart(fig_hist, use_container_width=True)
         _chart_download(fig_hist, "neutral_confidence.png", "Download confidence chart")
 
@@ -1024,7 +1185,10 @@ def page_neutral(df):
                          color_discrete_sequence=["#6b7280"])
         fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
         fig_bar.update_layout(**_base_layout(
-            xaxis_title="Number of reviews mentioning this theme",
+            xaxis=dict(
+                title=dict(text="Number of reviews mentioning this theme", font=AXIS_TITLE_FONT),
+                tickfont=TICK_FONT,
+            ),
             **_horizontal_bar_axis(tc["Count"].max())))
         st.plotly_chart(fig_bar, use_container_width=True)
         _chart_download(fig_bar, "neutral_themes.png", "Download themes chart")
@@ -1075,7 +1239,11 @@ def page_themes(df):
                            color_continuous_scale="Viridis")
     fig_theme_bar.update_traces(marker_line_color="white", marker_line_width=1)
     fig_theme_bar.update_layout(**_base_layout(
-        xaxis_title="Number of mentions", coloraxis_showscale=False,
+        xaxis=dict(
+            title=dict(text="Number of mentions", font=AXIS_TITLE_FONT),
+            tickfont=TICK_FONT,
+        ),
+        coloraxis_showscale=False,
         **_horizontal_bar_axis(theme_counts["Count"].max())))
     st.plotly_chart(fig_theme_bar, use_container_width=True)
     _chart_download(fig_theme_bar, "top_themes.png", "Download themes chart")
@@ -1138,8 +1306,12 @@ def page_themes(df):
                 pf = pd.DataFrame({"Phrase":phrases,"Count":pcounts}).sort_values("Count",ascending=True)
                 fig3 = px.bar(pf, x="Count", y="Phrase", orientation="h")
                 fig3.update_traces(marker_line_color="white", marker_line_width=1)
-                fig3.update_layout(**_base_layout(xaxis_title="Mentions", yaxis_title="",
-                                                   **_horizontal_bar_axis(pf["Count"].max())))
+                fig3.update_layout(**_base_layout(
+                    xaxis=dict(
+                        title=dict(text="Mentions", font=AXIS_TITLE_FONT),
+                        tickfont=TICK_FONT,
+                    ),
+                    **_horizontal_bar_axis(pf["Count"].max())))
                 st.plotly_chart(fig3, use_container_width=True)
         except Exception as e:
             st.info(f"Could not extract phrases: {e}")
@@ -1245,13 +1417,22 @@ def page_outliers(df):
             fig_out.update_traces(marker_line_color="white", marker_line_width=2,
                                   xbins=dict(start=0.0, end=1.0, size=0.05))
             fig_out.update_layout(**_base_layout(
-                xaxis_title="Model Confidence Score",
-                yaxis_title="Number of Reviews",
-                legend_title_text="Predicted Sentiment",
-                xaxis=dict(tickformat=".0%", range=[-0.05,1.05],
-                           tickvals=[i/10 for i in range(0,11)],
-                           ticktext=[f"{i*10}%" for i in range(0,11)]),
-                yaxis=_hist_yaxis(low_conf)))
+                xaxis=dict(
+                    title=dict(text="Model Confidence Score", font=AXIS_TITLE_FONT),
+                    tickformat=".0%", range=[-0.05, 1.05],
+                    tickvals=[i/10 for i in range(0, 11)],
+                    ticktext=[f"{i*10}%" for i in range(0, 11)],
+                    tickfont=TICK_FONT,
+                ),
+                yaxis=dict(
+                    title=dict(text="Number of Reviews", font=AXIS_TITLE_FONT),
+                    **_hist_yaxis(low_conf),
+                ),
+                legend=dict(
+                    title=dict(text="Predicted Sentiment", font=AXIS_TITLE_FONT),
+                    font=TICK_FONT,
+                ),
+            ))
             st.plotly_chart(fig_out, use_container_width=True)
             _chart_download(fig_out, "low_confidence_distribution.png",
                             "Download low-confidence chart")
