@@ -458,6 +458,11 @@ html, body, [class*="css"] {
     color: #ffffff !important;
 }
 /* Upload button inside file uploader */
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+    background-color: rgba(255,255,255,0.18) !important;
+    border: 2px dashed rgba(255,255,255,0.6) !important;
+    border-radius: 8px !important;
+}
 [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
     background-color: #ffffff !important;
     color: #1e3a5f !important;
@@ -465,8 +470,18 @@ html, body, [class*="css"] {
     border-radius: 6px !important;
     border: none !important;
 }
-[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span {
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button span,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button p {
     color: #1e3a5f !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] svg {
+    fill: #ffffff !important;
+    stroke: #ffffff !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] span,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] p,
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small {
+    color: #ffffff !important;
 }
 [data-testid="stSidebar"] small,
 [data-testid="stSidebar"] .stCaption {
@@ -1087,11 +1102,11 @@ def page_positive(df):
                                 title="Confidence Score Distribution — Positive Reviews",
                                 color_discrete_sequence=["#16a34a"])
         fig_hist.update_traces(marker_line_color="white", marker_line_width=2,
-                               xbins=dict(start=0.0, end=1.0, size=0.10))
+                               xbins=dict(start=0.0, end=1.01, size=0.10))
         fig_hist.update_layout(**_base_layout(
             xaxis=dict(
                 title=dict(text="Model Confidence Score (higher = more certain)", font=AXIS_TITLE_FONT),
-                tickformat=".0%", range=[-0.05, 1.05],
+                tickformat=".0%", range=[0, 1.05],
                 tickvals=[i/10 for i in range(0, 11)],
                 ticktext=[f"{i*10}%" for i in range(0, 11)],
                 tickfont=TICK_FONT,
@@ -1138,11 +1153,11 @@ def page_negative(df):
                                 title="Confidence Score Distribution — Negative Reviews",
                                 color_discrete_sequence=["#dc2626"])
         fig_hist.update_traces(marker_line_color="white", marker_line_width=2,
-                               xbins=dict(start=0.0, end=1.0, size=0.10))
+                               xbins=dict(start=0.0, end=1.01, size=0.10))
         fig_hist.update_layout(**_base_layout(
             xaxis=dict(
                 title=dict(text="Model Confidence Score (higher = more certain)", font=AXIS_TITLE_FONT),
-                tickformat=".0%", range=[-0.05, 1.05],
+                tickformat=".0%", range=[0, 1.05],
                 tickvals=[i/10 for i in range(0, 11)],
                 ticktext=[f"{i*10}%" for i in range(0, 11)],
                 tickfont=TICK_FONT,
@@ -1190,11 +1205,11 @@ def page_neutral(df):
                                 title="Confidence Score Distribution — Neutral / Mixed Reviews",
                                 color_discrete_sequence=["#6b7280"])
         fig_hist.update_traces(marker_line_color="white", marker_line_width=2,
-                               xbins=dict(start=0.0, end=1.0, size=0.10))
+                               xbins=dict(start=0.0, end=1.01, size=0.10))
         fig_hist.update_layout(**_base_layout(
             xaxis=dict(
                 title=dict(text="Model Confidence Score (higher = more certain it is neutral)", font=AXIS_TITLE_FONT),
-                tickformat=".0%", range=[-0.05, 1.05],
+                tickformat=".0%", range=[0, 1.05],
                 tickvals=[i/10 for i in range(0, 11)],
                 ticktext=[f"{i*10}%" for i in range(0, 11)],
                 tickfont=TICK_FONT,
@@ -1445,11 +1460,11 @@ def page_outliers(df):
                                    title="How uncertain was the model?",
                                    color_discrete_map=COLOUR_MAP, barmode="group")
             fig_out.update_traces(marker_line_color="white", marker_line_width=2,
-                                  xbins=dict(start=0.0, end=1.0, size=0.05))
+                                  xbins=dict(start=0.0, end=1.01, size=0.05))
             fig_out.update_layout(**_base_layout(
                 xaxis=dict(
                     title=dict(text="Model Confidence Score", font=AXIS_TITLE_FONT),
-                    tickformat=".0%", range=[-0.05, 1.05],
+                    tickformat=".0%", range=[0, 1.05],
                     tickvals=[i/10 for i in range(0, 11)],
                     ticktext=[f"{i*10}%" for i in range(0, 11)],
                     tickfont=TICK_FONT,
