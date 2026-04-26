@@ -1,0 +1,66 @@
+============================================================
+SENTIMENT ANALYSIS MODEL TRAINING REPORT — 75/25 SPLIT
+============================================================
+Date: 2026-04-26 11:11:23
+
+Split: 75% Training / 25% Testing
+Training samples: 14994
+Test samples:     4998
+
+Training sentiment distribution:
+sentiment
+positive         5287
+neutral/mixed    5240
+negative         4467
+
+Test sentiment distribution:
+sentiment
+positive         1763
+neutral/mixed    1746
+negative         1489
+
+TF-IDF feature matrix shape: (14994, 5000)
+Vocabulary size: 5000 terms
+
+============================================================
+5-FOLD STRATIFIED CROSS-VALIDATION RESULTS
+============================================================
+Accuracy scores: [0.8342 0.8377 0.8427 0.8392 0.8369]
+Mean Accuracy:   0.8381
+Std Accuracy:    0.0028
+Macro F1 scores: [0.8339 0.8377 0.8425 0.8385 0.8363]
+Mean Macro F1:   0.8378
+Std Macro F1:    0.0028
+
+============================================================
+TEST SET PERFORMANCE METRICS
+============================================================
+               precision    recall  f1-score   support
+
+     negative       0.81      0.87      0.84      1489
+neutral/mixed       0.87      0.75      0.81      1746
+     positive       0.83      0.89      0.86      1763
+
+     accuracy                           0.84      4998
+    macro avg       0.84      0.84      0.83      4998
+ weighted avg       0.84      0.84      0.83      4998
+
+Accuracy:          0.8353  (83.53%)
+Balanced Accuracy: 0.8367
+Macro F1:          0.8345
+Weighted F1:       0.8344
+Log Loss:          0.4608
+
+Confusion Matrix (rows=actual, cols=predicted):
+[[1292   94  103]
+ [ 205 1315  226]
+ [ 101   94 1568]]
+
+============================================================
+COMPARISON NOTE
+============================================================
+Compare these results against training_multi.log (80/20 split).
+A higher test accuracy in the 80/20 model is expected since it
+trained on more data. The 75/25 model has a larger, more
+representative test set making its metrics more conservative
+and potentially more realistic.
