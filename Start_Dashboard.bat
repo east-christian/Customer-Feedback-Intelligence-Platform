@@ -11,6 +11,6 @@ call .venv\Scripts\activate.bat
 
 :: Run the Streamlit application
 echo Launching Dashboard in your browser...
-streamlit run src\scripts\run_full_pipeline.py
+streamlit run src\scripts\main.py
 
 pause
