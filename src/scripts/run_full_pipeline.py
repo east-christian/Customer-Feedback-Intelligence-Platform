@@ -583,8 +583,12 @@ def render_top_compliments_concerns(df_exploded):
         fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
         fig.update_layout(
             height=320,
-            margin=dict(t=10, b=10, l=10, r=10),
-            yaxis={'categoryorder': 'total ascending'},
+            margin=dict(t=10, b=10, l=0, r=60),
+            yaxis={
+                'categoryorder': 'total ascending',
+                'ticklabelposition': 'outside left',
+                'automargin': True,
+            },
             coloraxis_showscale=False,
             xaxis_title="", yaxis_title="",
         )
@@ -604,8 +608,12 @@ def render_top_compliments_concerns(df_exploded):
         fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
         fig.update_layout(
             height=320,
-            margin=dict(t=10, b=10, l=10, r=10),
-            yaxis={'categoryorder': 'total ascending'},
+            margin=dict(t=10, b=10, l=0, r=60),
+            yaxis={
+                'categoryorder': 'total ascending',
+                'ticklabelposition': 'outside left',
+                'automargin': True,
+            },
             coloraxis_showscale=False,
             xaxis_title="", yaxis_title="",
         )
@@ -770,9 +778,9 @@ def classify_theme_lifecycle(df_exploded, sentiment_filter="negative"):
         if df_exploded.empty:
             return None
 
-        # Apply the sentiment filter before computing lifecycle trends
+        # Normalize all sentiment labels first, then strictly filter to the selected sentiment only
+        df_exploded["sentiment_clean"] = df_exploded["predicted_sentiment"].apply(normalize_sentiment_label)
         if sentiment_filter in ("positive", "negative"):
-            df_exploded["sentiment_clean"] = df_exploded["predicted_sentiment"].apply(normalize_sentiment_label)
             df_exploded = df_exploded[df_exploded["sentiment_clean"] == sentiment_filter]
             if df_exploded.empty:
                 return None
