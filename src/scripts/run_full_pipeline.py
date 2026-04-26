@@ -4,8 +4,11 @@ from pathlib import Path
 from datetime import datetime
 import joblib
 import pandas as pd
+import numpy as np
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction import text as sk_text
 from sklearn.linear_model import LogisticRegression
@@ -17,6 +20,12 @@ import time
 import ollama
 import ast
 import re
+
+try:
+    from wordcloud import WordCloud
+    WORDCLOUD_AVAILABLE = True
+except ImportError:
+    WORDCLOUD_AVAILABLE = False
 
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.pagesizes import letter
@@ -54,18 +63,31 @@ COLOUR_MAP = {
 }
 
 def _text_col(df):
+    """
+    Find the column that contains the review text.
+    Checks for 'text', 'raw_text', or 'clean_text' — returns whichever exists first.
+    """
     for c in ["text", "raw_text", "clean_text"]:
         if c in df.columns:
             return c
     return "clean_text"
 
 def _csv_hash(df):
+    """
+    Create a unique fingerprint for a dataframe.
+    Used to detect if the same CSV is uploaded twice so we can skip re-running the LLM.
+    """
     return hashlib.md5(pd.util.hash_pandas_object(df).values).hexdigest()
 
 
-# ── LLM ───────────────────────────────────────────────────────────────────────
+### LLM
 
 def call_llm(prompt, model="gemma3:4b"):
+    """
+    Send a prompt to the local Ollama language model and return its response.
+    Uses Gemma 3 4B by default — a small, fast model that runs entirely on your Mac.
+    If Ollama is not running this will raise an error.
+    """
     try:
         response = ollama.chat(model=model, messages=[{"role": "user", "content": prompt}])
         return response["message"]["content"]
@@ -74,12 +96,18 @@ def call_llm(prompt, model="gemma3:4b"):
         raise e
 
 
-# ── Model ─────────────────────────────────────────────────────────────────────
+### Model
 
 def ensure_output_dir():
+    """Create the output folder if it does not already exist."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def sentiments_from_stars(stars, classification_type="three_class"):
+    """
+    Convert a star rating (1-5) into a sentiment label.
+    *** 4-5 stars = positive, 3 stars = neutral/mixed, 1-2 stars = negative ***
+    Used to automatically label the training data before the model is trained.
+    """
     try:
         stars = float(stars)
     except (TypeError, ValueError):
@@ -89,6 +117,11 @@ def sentiments_from_stars(stars, classification_type="three_class"):
     return "positive" if stars >= 4 else ("neutral/mixed" if stars == 3 else "negative")
 
 def prepare_training_data():
+    """
+    Load the training CSV from the sample_data folder and prepare it for model training.
+    Adds a 'sentiment' column based on star ratings if one does not already exist.
+    Also creates a 'clean_text' column (lowercased review text) if missing.
+    """
     train_file = DATA_DIR / "training_testing_data.csv"
     if not train_file.exists():
         candidates = sorted(DATA_DIR.glob("*.csv"))
@@ -109,6 +142,22 @@ def prepare_training_data():
     return df[df["sentiment"].notna()].copy()
 
 def train_model():
+    """
+    Train the sentiment classification model from scratch.
+
+    Process:
+    *** Step 1 — Load labelled review data
+    *** Step 2 — Split into 80% training / 20% testing
+    *** Step 3 — Convert text to numbers using TF-IDF
+                 (words that appear often in one review but rarely across all reviews
+                  get a higher score — this helps the model focus on meaningful words)
+    *** Step 4 — Train a Logistic Regression classifier
+                 (a fast, reliable algorithm for text classification)
+    *** Step 5 — Measure accuracy on the test set
+    *** Step 6 — Save the trained model to disk so it can be reused
+
+    Returns the trained model, vectorizer, and accuracy score.
+    """
     df = prepare_training_data()
     content, sent = df["clean_text"], df["sentiment"]
     c_train, c_test, s_train, s_test = train_test_split(
@@ -128,17 +177,30 @@ def train_model():
 
 @st.cache_resource
 def load_or_train_model():
+    """
+    Load the sentiment model from disk if it already exists, otherwise train a new one.
+    The @st.cache_resource decorator means the model is loaded only once per session
+    and kept in memory — so switching tabs or clicking buttons does not reload it from disk.
+    """
     ensure_output_dir()
     if MODEL_FILE.exists() and VECTORIZER_FILE.exists():
         return joblib.load(MODEL_FILE), joblib.load(VECTORIZER_FILE), None
     return train_model()
 
 
-# ── Preprocessing ─────────────────────────────────────────────────────────────
+### Preprocessing
 
 def preprocess_reviews(df):
-    # ── Auto-detect and rename common column name variations ──────────────────
-    # This handles CSVs from Instant Data Scraper, Octoparse, Apify, etc.
+    """
+    Clean and prepare an uploaded review CSV for analysis.
+
+    *** Automatically renames columns from common scraper formats
+        (e.g. Instant Data Scraper, Octoparse, Apify)
+    *** Lowercases all review text so the model treats 'Good' and 'good' the same
+    *** Raises a clear error if no review text column can be found
+    """
+    ### Auto-detect and rename common column name variations
+    # Handles CSVs from Instant Data Scraper, Octoparse, Apify, etc.
     col_map = {}
     cols_lower = {c.lower(): c for c in df.columns}
 
@@ -187,7 +249,7 @@ def preprocess_reviews(df):
     if col_map:
         df = df.rename(columns=col_map)
 
-    # ── Clean the text column ──────────────────────────────────────────────────
+    ### Clean the text column
     if "clean_text" in df.columns:
         df["clean_text"] = df["clean_text"].fillna("").astype(str).str.lower()
     elif "text" in df.columns:
@@ -201,19 +263,32 @@ def preprocess_reviews(df):
         )
     return df
 
+### Mixed-signal detection helpers
+# These functions check if a review contains both positive and negative language
+# e.g. "Great coffee but terrible service" — this is a mixed-signal review
+
 CONTRAST_WORDS = {"but","however","though","although","yet","except","overall","while"}
 POS_CUES = {"good","great","nice","friendly","fast","clean","love","excellent","amazing","enjoy"}
 NEG_CUES = {"bad","slow","rude","wrong","dirty","hate","awful","terrible","issue","problem"}
 
 def has_contrast(text):
+    """Check if the review contains a contrast word like 'but' or 'however'."""
     t = f" {text.lower()} "
     return any(f" {w} " in t for w in CONTRAST_WORDS)
 
 def has_dual_polarity_words(text):
+    """Check if the review uses both positive words (e.g. 'great') and negative words (e.g. 'slow')."""
     tokens = set(re.findall(r"[a-z']+", text.lower()))
     return bool(tokens & POS_CUES) and bool(tokens & NEG_CUES)
 
 def mixed_rule(row):
+    """
+    Decide if a neutral review is actually a mixed-signal review.
+    A review is flagged as mixed if it meets at least one of these conditions:
+    *** The model gave it a moderate probability for both positive and negative
+        AND the review contains a contrast word
+    *** The review contains a contrast word AND uses both positive and negative vocabulary
+    """
     text  = str(row.get("clean_text", ""))
     p_pos = float(row.get("prob_positive", 0.0))
     p_neg = float(row.get("prob_negative", 0.0))
@@ -223,7 +298,14 @@ def mixed_rule(row):
     return (prob_cond and contrast_cond) or (contrast_cond and lex_cond)
 
 def predict_reviews(df, model, vectorizer):
-    tfidf = vectorizer.transform(df["clean_text"])
+    """
+    Run the sentiment model on every review in the uploaded CSV.
+
+    *** Converts each review to a TF-IDF number vector
+    *** The model predicts positive, negative, or neutral for each review
+    *** Records the confidence score (how certain the model was)
+    *** Flags mixed-signal reviews using the contrast word + polarity vocabulary rules
+    """
     preds = model.predict(tfidf)
     probs = model.predict_proba(tfidf)
     df["predicted_sentiment"] = preds
@@ -237,9 +319,15 @@ def predict_reviews(df, model, vectorizer):
     return df
 
 
-# ── Theme extraction ──────────────────────────────────────────────────────────
+### Theme extraction
+# Sends reviews to the local LLM in batches and asks it to assign business themes.
+# Each batch is retried up to 5 times if the LLM response is invalid or contains invented themes.
 
 def build_prompt(batch, themes):
+    """
+    Build the instruction message sent to the LLM for a batch of reviews.
+    Tells the LLM exactly which themes are allowed and asks it to return valid JSON only.
+    """
     numbered = "\n".join([f"Review {i+1}:\n{str(r)[:250]}" for i, r in enumerate(batch)])
     return f"""You are a professional theme classifier for customer reviews.
 Available themes: {themes}
@@ -254,7 +342,12 @@ Reviews:
 Return ONLY valid JSON."""
 
 def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
-    batch_idx, batch = batch_info
+    """
+    Send one batch of reviews to the LLM and extract their themes.
+    *** Retries up to 5 times if the LLM returns invalid JSON or invents themes not in the list
+    *** Rejects any theme not in the approved list (hallucination guard)
+    *** Returns the batch index, reviews, assigned themes, and success/failure status
+    """
     prompt = build_prompt(batch, themes_list)
     for attempt in range(1, max_retries + 1):
         try:
@@ -311,7 +404,15 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
     return batch_idx, batch, None, "failed"
 
 def extract_themes(df, themes_list, batch_size=30, max_workers=2):
-    reviews = df["clean_text"].fillna("").tolist()
+    """
+    Assign business themes to every review using the local LLM.
+
+    *** Splits reviews into batches of 30 so the LLM does not get overwhelmed
+    *** Runs 2 batches at the same time (parallel processing) to save time
+    *** Shows a progress bar while processing
+    *** Any batch that fails after 5 retries is dropped from the results
+    *** Results are cached — if you upload the same CSV again the LLM is skipped
+    """
     batches = [(i, reviews[i:i+batch_size]) for i in range(0, len(reviews), batch_size)]
     success, failed = [], []
     pbar   = st.progress(0)
@@ -348,10 +449,15 @@ def extract_themes(df, themes_list, batch_size=30, max_workers=2):
     return df
 
 
-# ── AI Executive Summary ───────────────────────────────────────────────────────
-
 def generate_executive_summary(df):
-    total    = len(df)
+    """
+    Use the local LLM to write a plain-English business summary of the analysis results.
+    *** Calculates key stats (positive %, negative %, top themes) from the data
+    *** Sends those stats to Ollama as a structured prompt
+    *** The LLM writes 3 short paragraphs: what is going well, what needs attention,
+        and what to do next
+    *** All of this runs locally — no data is sent to the internet
+    """
     pos      = int((df["predicted_sentiment"] == "positive").sum())
     neg      = int((df["predicted_sentiment"] == "negative").sum())
     mixed    = int(df["predicted_sentiment"].isin(["neutral","neutral/mixed"]).sum())
@@ -386,7 +492,7 @@ Write exactly 3 short paragraphs:
     return call_llm(prompt)
 
 
-# ── Shared CSS ─────────────────────────────────────────────────────────────────
+### Shared CSS
 
 METRIC_CSS = """
 <style>
@@ -577,16 +683,31 @@ label, .stSelectbox label, .stTextInput label,
 [data-testid="stMetricDelta"] { font-size: 13px !important; color: #6b7280 !important; }
 [data-testid="stMetricDelta"] svg { display: none; }
 
-/* ── Main content area background ── */
-.main .block-container {
-    padding-top: 2rem !important;
-    max-width: 1200px !important;
+/* ── Remove outline box from selectbox display text ── */
+[data-baseweb="select"] > div {
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+[data-baseweb="select"] [data-testid="stMarkdownContainer"] {
+    border: none !important;
+}
+/* Keep the outer selectbox container border clean */
+[data-baseweb="select"] {
+    border: 1.5px solid #d1d5db !important;
+    border-radius: 8px !important;
+}
+/* Remove inner highlighted box around selected value text */
+[data-baseweb="select"] span {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
 }
 </style>
 """
 
 
-# ── Chart / axis helpers ───────────────────────────────────────────────────────
+### Chart / axis helpers
 
 CHART_FONT = dict(family="Inter, sans-serif", size=14, color="#1f2937")
 AXIS_TITLE_FONT = dict(family="Inter, sans-serif", size=15, color="#1e3a5f")
@@ -661,7 +782,7 @@ def _chart_download(fig, filename, label="Download chart as PNG"):
         st.caption("Install kaleido for chart downloads: pip install kaleido")
 
 
-# ── PDF helpers ────────────────────────────────────────────────────────────────
+### PDF helpers
 
 def _pdf_styles():
     base = getSampleStyleSheet()
@@ -864,16 +985,16 @@ def build_custom_pdf(df, report_title="Customer Feedback Report",
     return buf.getvalue()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+### 
 #  TAB PAGE RENDERERS
-# ══════════════════════════════════════════════════════════════════════════════
+### 
 
 def page_overview(df):
     st.markdown(METRIC_CSS, unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # ── Month selector ─────────────────────────────────────────────────────────
+    ### Month selector
     if "date" in df.columns:
         try:
             df["date"] = pd.to_datetime(df["date"])
@@ -894,7 +1015,7 @@ def page_overview(df):
         except Exception:
             pass
 
-    # ── KPI cards ──────────────────────────────────────────────────────────────
+    ### KPI cards
     total    = len(df)
     pos      = int((df["predicted_sentiment"] == "positive").sum())
     neg      = int((df["predicted_sentiment"] == "negative").sum())
@@ -910,7 +1031,7 @@ def page_overview(df):
 
     st.markdown("---")
 
-    # ── Keyword search ─────────────────────────────────────────────────────────
+    ### Keyword search
     st.markdown("**Keyword Search**")
     keyword = st.text_input("Search reviews for a keyword or phrase:",
                             placeholder="e.g. wait, rude, coffee, parking...",
@@ -934,7 +1055,7 @@ def page_overview(df):
                 st.dataframe(kw_df[show_cols].head(50), use_container_width=True)
         st.markdown("---")
 
-    # ── Pie chart ──────────────────────────────────────────────────────────────
+    ### Pie chart
     counts = df["predicted_sentiment"].value_counts().reset_index()
     counts.columns = ["sentiment","count"]
     fig_pie = px.pie(counts, names="sentiment", values="count",
@@ -943,7 +1064,7 @@ def page_overview(df):
     st.plotly_chart(fig_pie, use_container_width=True)
     _chart_download(fig_pie, "sentiment_distribution.png", "Download sentiment pie chart")
 
-    # ── Time trend ─────────────────────────────────────────────────────────────
+    ### Time trend
     if "date" in df.columns:
         try:
             td = (df.groupby([pd.Grouper(key="date", freq="ME"), "predicted_sentiment"])
@@ -973,14 +1094,14 @@ def page_overview(df):
         except Exception:
             st.info("Date column could not be parsed.")
 
-    # ── Data preview ───────────────────────────────────────────────────────────
+    ### Data preview
     st.markdown("---")
     st.markdown("**Data preview — first 10 rows**")
     preview_cols = [c for c in ["predicted_sentiment","confidence","is_mixed","themes"]
                     if c in df.columns]
     st.dataframe(df[preview_cols].head(10), use_container_width=True)
 
-    # ── AI Executive Summary ───────────────────────────────────────────────────
+    ### AI Executive Summary
     st.markdown("---")
     st.markdown("### Executive Summary")
     if st.button("Generate AI Summary", key="gen_summary"):
@@ -1011,7 +1132,7 @@ def page_overview(df):
     else:
         st.caption("Click Generate AI Summary to get an AI-written analysis of the results.")
 
-    # ── Customizable Report Builder ────────────────────────────────────────────
+    ### Customizable Report Builder
     st.markdown("---")
     st.markdown("### Download Report")
     st.write("Select what to include in your PDF report before downloading.")
@@ -1514,10 +1635,354 @@ def page_outliers(df):
             st.info("No mixed-signal reviews detected in this dataset.")
 
 
+def page_trends(df):
+    st.markdown("### Trends & Insights")
+    st.write("Advanced analytics — spike detection, theme lifecycle, compliments vs concerns, word clouds and emergent themes.")
+
+    df_exploded = get_exploded_themes(df)
+
+    ### Top Compliments & Concerns
+    st.markdown("---")
+    st.markdown("#### Top Compliments vs Concerns")
+    st.caption("Themes with the highest positive % vs highest negative % — at least 5 reviews required.")
+    if not df_exploded.empty:
+        render_top_compliments_concerns(df_exploded)
+    else:
+        st.info("No theme data available.")
+
+    ### Theme × Sentiment Heatmap
+    st.markdown("---")
+    st.markdown("#### Theme × Sentiment Heatmap")
+    st.caption("Visual breakdown of how each theme is perceived. Darker red = higher negative concentration.")
+    if not df_exploded.empty:
+        render_heatmap(df_exploded)
+    else:
+        st.info("No theme data available.")
+
+    ### Spike Detection
+    st.markdown("---")
+    st.markdown("#### Negative Review Spike Detection")
+    st.caption("Months where negative reviews exceeded 1.5 standard deviations above average — likely indicates an incident.")
+    render_spike_detection(df)
+
+    ### Theme Lifecycle
+    st.markdown("---")
+    render_theme_lifecycle(df_exploded)
+
+    ### Emergent Themes
+    st.markdown("---")
+    st.markdown("#### Month-over-Month Theme Momentum")
+    render_emergent_themes(df_exploded)
+
+    ### Word Cloud
+    st.markdown("---")
+    st.markdown("#### Word Cloud by Sentiment")
+    st.caption("Most frequent words per sentiment class. Larger = more frequent.")
+    wc_sentiment = st.radio(
+        "Choose sentiment:",
+        ["positive","negative","neutral"],
+        horizontal=True, key="wc_sentiment_trends",
+    )
+    render_word_cloud(df, wc_sentiment)
+
+
+def normalize_sentiment_label(s):
+    if isinstance(s, str) and s.lower() in ("neutral/mixed", "neutral"):
+        return "neutral"
+    return s
+
+
+def get_exploded_themes(df):
+    if "themes" not in df.columns:
+        return pd.DataFrame(columns=["Theme", "predicted_sentiment", "clean_text"])
+    df_exp = df.assign(Theme=df["themes"].str.split(r",\s*")).explode("Theme")
+    df_exp["Theme"] = df_exp["Theme"].str.strip()
+    df_exp = df_exp[~df_exp["Theme"].isin(["FAILED", "", "NOT PROCESSED"])]
+    return df_exp[df_exp["Theme"].notna()].reset_index(drop=True)
+
+
+def render_top_compliments_concerns(df_exploded):
+    pivot = pd.crosstab(
+        df_exploded["Theme"],
+        df_exploded["predicted_sentiment"].apply(normalize_sentiment_label)
+    )
+    if pivot.empty:
+        st.info("Not enough data for compliments/concerns analysis.")
+        return
+    pivot["Total"] = pivot.sum(axis=1)
+    pivot = pivot[pivot["Total"] >= 5]
+    pivot["positive_pct"] = (pivot.get("positive", 0) / pivot["Total"] * 100).round(1)
+    pivot["negative_pct"] = (pivot.get("negative", 0) / pivot["Total"] * 100).round(1)
+
+    top_compliments = pivot.sort_values("positive_pct", ascending=False).head(5)
+    top_concerns    = pivot.sort_values("negative_pct",  ascending=False).head(5)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Top Compliments** — themes customers love most")
+        comp_df = top_compliments.reset_index()[["Theme","positive_pct","Total"]]
+        comp_df.columns = ["Theme","Positive %","Reviews"]
+        fig = px.bar(comp_df, x="Positive %", y="Theme", orientation="h",
+                     color="Positive %",
+                     color_continuous_scale=["#D1FAE5","#10B981","#047857"],
+                     text="Positive %")
+        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig.update_layout(height=320, margin=dict(t=10,b=10,l=0,r=60),
+                          yaxis=dict(categoryorder="total ascending", automargin=True),
+                          coloraxis_showscale=False, xaxis_title="", yaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.markdown("**Top Concerns** — themes customers complain about most")
+        conc_df = top_concerns.reset_index()[["Theme","negative_pct","Total"]]
+        conc_df.columns = ["Theme","Negative %","Reviews"]
+        fig = px.bar(conc_df, x="Negative %", y="Theme", orientation="h",
+                     color="Negative %",
+                     color_continuous_scale=["#FEE2E2","#EF4444","#991B1B"],
+                     text="Negative %")
+        fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig.update_layout(height=320, margin=dict(t=10,b=10,l=0,r=60),
+                          yaxis=dict(categoryorder="total ascending", automargin=True),
+                          coloraxis_showscale=False, xaxis_title="", yaxis_title="")
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def render_heatmap(df_exploded):
+    pivot = pd.crosstab(
+        df_exploded["Theme"],
+        df_exploded["predicted_sentiment"].apply(normalize_sentiment_label),
+        normalize="index"
+    ) * 100
+    for col in ["positive","neutral","negative"]:
+        if col not in pivot.columns:
+            pivot[col] = 0
+    pivot = pivot[["positive","neutral","negative"]]
+
+    fig = go.Figure(data=go.Heatmap(
+        z=pivot.values,
+        x=["Positive","Neutral","Negative"],
+        y=pivot.index,
+        colorscale=[[0,"#FFFFFF"],[0.5,"#FED7AA"],[1,"#DC2626"]],
+        text=pivot.values.round(1),
+        texttemplate="%{text}%",
+        textfont={"size":12,"color":"black"},
+        hovertemplate="<b>%{y}</b><br>%{x}: %{z:.1f}%<extra></extra>",
+        colorbar=dict(title="% of reviews"),
+    ))
+    fig.update_layout(height=400, margin=dict(t=20,b=20,l=20,r=20),
+                      xaxis_title="", yaxis_title="")
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("Darker red cells = higher concentration of that sentiment for that theme.")
+
+
+def render_spike_detection(df):
+    if "date" not in df.columns:
+        st.info("No date column found — spike detection unavailable.")
+        return
+    try:
+        d = df.copy()
+        d["date"] = pd.to_datetime(d["date"], errors="coerce")
+        d = d[d["date"].notna()]
+        if d.empty:
+            return
+        d["sentiment_clean"] = d["predicted_sentiment"].apply(normalize_sentiment_label)
+        neg_df  = d[d["sentiment_clean"] == "negative"]
+        monthly = neg_df.groupby(pd.Grouper(key="date", freq="ME")).size().reset_index(name="count")
+        if len(monthly) < 3:
+            st.info("Need at least 3 months of data to detect spikes.")
+            return
+        mean      = monthly["count"].mean()
+        std       = monthly["count"].std()
+        threshold = mean + 1.5 * std
+        spikes    = monthly[monthly["count"] > threshold].sort_values("count", ascending=False)
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=monthly["date"], y=monthly["count"],
+            marker_color=["#F59E0B" if c > threshold else "#dc2626" for c in monthly["count"]],
+            hovertemplate="<b>%{x|%b %Y}</b><br>Negative reviews: %{y}<extra></extra>",
+        ))
+        fig.add_hline(y=threshold, line_dash="dash", line_color="#F59E0B",
+                      annotation_text=f"Spike threshold ({threshold:.0f})",
+                      annotation_position="top right")
+        fig.add_hline(y=mean, line_dash="dot", line_color="#9CA3AF",
+                      annotation_text=f"Average ({mean:.0f})",
+                      annotation_position="bottom right")
+        fig.update_layout(height=400, margin=dict(t=30,b=20,l=20,r=20),
+                          xaxis_title="Month", yaxis_title="Negative review count",
+                          showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+        if not spikes.empty:
+            st.markdown("**Detected Spikes:**")
+            for _, row in spikes.head(5).iterrows():
+                pct_above = (row["count"] - mean) / mean * 100 if mean > 0 else 0
+                st.warning(
+                    f"**{row['date'].strftime('%B %Y')}** — "
+                    f"{int(row['count'])} negative reviews "
+                    f"({pct_above:+.0f}% above average of {mean:.0f})"
+                )
+        else:
+            st.success("No significant spikes detected. Negative review volume is stable.")
+    except Exception as e:
+        st.warning(f"Could not run spike detection: {e}")
+
+
+def classify_theme_lifecycle(df_exploded, sentiment_filter="negative"):
+    if "date" not in df_exploded.columns:
+        return None
+    try:
+        d = df_exploded.copy()
+        d["date"] = pd.to_datetime(d["date"], errors="coerce")
+        d = d[d["date"].notna()]
+        if d.empty:
+            return None
+        d["sentiment_clean"] = d["predicted_sentiment"].apply(normalize_sentiment_label)
+        if sentiment_filter in ("positive","negative"):
+            d = d[d["sentiment_clean"] == sentiment_filter]
+        if d.empty:
+            return None
+
+        theme_time = (d.groupby([pd.Grouper(key="date", freq="ME"), "Theme"])
+                       .size().reset_index(name="count"))
+        months = sorted(theme_time["date"].unique())
+        if len(months) < 4:
+            return None
+
+        midpoint           = len(months) // 2
+        first_half_months  = months[:midpoint]
+        second_half_months = months[midpoint:]
+
+        results = []
+        for theme in theme_time["Theme"].unique():
+            t_data = theme_time[theme_time["Theme"] == theme]
+            fh = t_data[t_data["date"].isin(first_half_months)]["count"]
+            sh = t_data[t_data["date"].isin(second_half_months)]["count"]
+            fh_avg = fh.mean() if not fh.empty else 0.0
+            sh_avg = sh.mean() if not sh.empty else 0.0
+            fh_avg = 0.0 if pd.isna(fh_avg) else fh_avg
+            sh_avg = 0.0 if pd.isna(sh_avg) else sh_avg
+            fh_presence = (fh > 0).sum()
+
+            if fh_presence <= 1 and sh_avg > 0:
+                lifecycle, color = "Emerging",  "#3B82F6"
+            elif sh_avg > fh_avg * 1.3:
+                lifecycle, color = "Growing",   "#10B981"
+            elif sh_avg < fh_avg * 0.7:
+                lifecycle, color = "Declining", "#F59E0B"
+            else:
+                lifecycle, color = "Stable",    "#6B7280"
+
+            change_pct = ((sh_avg - fh_avg) / fh_avg * 100) if fh_avg > 0 else 100
+            results.append({
+                "Theme": theme, "Lifecycle": lifecycle, "Color": color,
+                "First Half Avg": round(fh_avg, 1),
+                "Second Half Avg": round(sh_avg, 1),
+                "Change %": round(change_pct, 1),
+            })
+        return pd.DataFrame(results).sort_values("Change %", ascending=False)
+    except Exception:
+        return None
+
+
+def render_theme_lifecycle(df_exploded):
+    st.markdown("**Theme Lifecycle Classification**")
+    st.caption("How each theme's mention volume changed from the first half to the second half of the period.")
+    sentiment_filter = st.radio(
+        "Filter by sentiment:",
+        ["negative","positive"],
+        format_func=lambda x: x.title(),
+        horizontal=True, key="lifecycle_filter",
+    )
+    lifecycle_df = classify_theme_lifecycle(df_exploded, sentiment_filter=sentiment_filter)
+    if lifecycle_df is None or lifecycle_df.empty:
+        st.info(f"Not enough {sentiment_filter} data for lifecycle analysis (need at least 4 months).")
+        return
+    for _, row in lifecycle_df.iterrows():
+        cols = st.columns([2, 1.5, 2, 2])
+        with cols[0]: st.markdown(f"**{row['Theme']}**")
+        with cols[1]:
+            st.markdown(
+                f'<span style="background:{row["Color"]}20; color:{row["Color"]}; '
+                f'padding:3px 10px; border-radius:10px; font-weight:600; font-size:13px;">'
+                f'{row["Lifecycle"]}</span>',
+                unsafe_allow_html=True,
+            )
+        with cols[2]:
+            st.markdown(f"Avg/mo: **{row['First Half Avg']} → {row['Second Half Avg']}**")
+        with cols[3]:
+            clr = "#10B981" if row["Change %"] > 0 else "#EF4444" if row["Change %"] < 0 else "#6B7280"
+            st.markdown(
+                f'<span style="color:{clr}; font-weight:600;">{row["Change %"]:+.1f}%</span>',
+                unsafe_allow_html=True)
+        st.markdown("<hr style='margin:0.3rem 0; border-color:#F3F4F6;'>", unsafe_allow_html=True)
+
+
+def render_emergent_themes(df_exploded):
+    if "date" not in df_exploded.columns:
+        return
+    try:
+        d = df_exploded.copy()
+        d["date"] = pd.to_datetime(d["date"], errors="coerce")
+        d = d[d["date"].notna()]
+        if d.empty:
+            return
+        theme_time = (d.groupby([pd.Grouper(key="date", freq="ME"), "Theme"])
+                       .size().reset_index(name="count"))
+        months = sorted(theme_time["date"].unique())
+        if len(months) < 2:
+            st.info("Need at least 2 months for momentum analysis.")
+            return
+        curr = theme_time[theme_time["date"] == months[-1]].set_index("Theme")
+        prev = theme_time[theme_time["date"] == months[-2]].set_index("Theme")
+        emer = curr[["count"]].join(prev[["count"]], lsuffix="_curr", rsuffix="_prev", how="outer").fillna(0)
+        emer["Change"] = (emer["count_curr"] - emer["count_prev"]).astype(int)
+        emer["count_curr"] = emer["count_curr"].astype(int)
+        emer["count_prev"] = emer["count_prev"].astype(int)
+        st.markdown(f"**Momentum: {months[-2].strftime('%b %Y')} → {months[-1].strftime('%b %Y')}**")
+        st.dataframe(
+            emer.sort_values("Change", ascending=False)
+            [["count_prev","count_curr","Change"]]
+            .rename(columns={"count_prev":"Prev Month","count_curr":"Current Month","Change":"Momentum"}),
+            use_container_width=True,
+        )
+    except Exception as e:
+        st.warning(f"Could not compute emergent themes: {e}")
+
+
+def render_word_cloud(df, sentiment):
+    if not WORDCLOUD_AVAILABLE:
+        st.info("Word cloud requires: pip install wordcloud")
+        return
+    df_f = df[df["predicted_sentiment"].apply(normalize_sentiment_label) == sentiment]
+    if df_f.empty:
+        st.info(f"No {sentiment} reviews for word cloud.")
+        return
+    text = " ".join(df_f["clean_text"].fillna("").astype(str).tolist())
+    if not text.strip():
+        return
+    extra_stop = {"review","user","star","stars","https","http","amp","just","like","im",
+                  "ive","got","get","go","going","went","told","said","would","could","still"}
+    stop_words = set(sk_text.ENGLISH_STOP_WORDS) | extra_stop
+    color_map  = {"positive":"Greens","negative":"Reds","neutral":"Greys"}
+    try:
+        wc = WordCloud(width=800, height=400, background_color="white",
+                       colormap=color_map.get(sentiment,"viridis"),
+                       stopwords=stop_words, max_words=80,
+                       relative_scaling=0.5, min_font_size=10).generate(text)
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.imshow(wc, interpolation="bilinear")
+        ax.axis("off")
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+    except Exception as e:
+        st.warning(f"Could not generate word cloud: {e}")
+
+
 def page_methodology():
     st.markdown("## About & Methodology")
 
-    # ── Credits ────────────────────────────────────────────────────────────────
+    ### Credits
     st.markdown(
         '<div style="background:#f0f4ff; border-left:4px solid #1e3a5f; '
         'padding:18px 22px; border-radius:8px; margin-bottom:16px;">'
@@ -1536,7 +2001,7 @@ def page_methodology():
 
     st.markdown("---")
 
-    # ── What it does ───────────────────────────────────────────────────────────
+    ### What it does
     st.markdown("### What This Platform Does")
     st.markdown(
         """
@@ -1547,7 +2012,7 @@ def page_methodology():
         """
     )
 
-    # ── Sentiment Model ────────────────────────────────────────────────────────
+    ### Sentiment Model
     st.markdown("---")
     st.markdown("### Sentiment Model")
     col1, col2 = st.columns(2)
@@ -1572,7 +2037,7 @@ def page_methodology():
         """
     )
 
-    # ── Theme Extraction ───────────────────────────────────────────────────────
+    ### Theme Extraction
     st.markdown("---")
     st.markdown("### Theme Extraction")
     st.markdown(
@@ -1605,7 +2070,7 @@ def page_methodology():
             unsafe_allow_html=True,
         )
 
-    # ── Tech Stack & Privacy ───────────────────────────────────────────────────
+    ### Tech Stack & Privacy
     st.markdown("---")
     st.markdown("### Technology Stack")
     tc1, tc2, tc3 = st.columns(3)
@@ -1620,9 +2085,9 @@ def page_methodology():
     st.caption("Customer Feedback Intelligence Platform — CSCI 491 · Group 5")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+### 
 #  MAIN
-# ══════════════════════════════════════════════════════════════════════════════
+### 
 
 def main():
     st.markdown(METRIC_CSS, unsafe_allow_html=True)
@@ -1666,17 +2131,19 @@ def main():
     if "analyzed_df" in st.session_state:
         df = st.session_state.analyzed_df
         st.markdown("---")
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
             "Overview", "Positive Reviews", "Neutral Reviews",
-            "Negative Reviews", "Theme Extraction", "Outliers", "About",
+            "Negative Reviews", "Theme Extraction", "Trends & Insights",
+            "Outliers", "About",
         ])
         with tab1: page_overview(df)
         with tab2: page_positive(df)
         with tab3: page_neutral(df)
         with tab4: page_negative(df)
         with tab5: page_themes(df)
-        with tab6: page_outliers(df)
-        with tab7: page_methodology()
+        with tab6: page_trends(df)
+        with tab7: page_outliers(df)
+        with tab8: page_methodology()
 
     elif not uploaded_file:
         st.info("Upload a CSV file in the sidebar and click Run Analysis to get started.")
