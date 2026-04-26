@@ -306,6 +306,7 @@ def predict_reviews(df, model, vectorizer):
     *** Records the confidence score (how certain the model was)
     *** Flags mixed-signal reviews using the contrast word + polarity vocabulary rules
     """
+    tfidf = vectorizer.transform(df["clean_text"])
     preds = model.predict(tfidf)
     probs = model.predict_proba(tfidf)
     df["predicted_sentiment"] = preds
@@ -348,6 +349,7 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
     *** Rejects any theme not in the approved list (hallucination guard)
     *** Returns the batch index, reviews, assigned themes, and success/failure status
     """
+    batch_idx, batch = batch_info
     prompt = build_prompt(batch, themes_list)
     for attempt in range(1, max_retries + 1):
         try:
@@ -413,6 +415,7 @@ def extract_themes(df, themes_list, batch_size=30, max_workers=2):
     *** Any batch that fails after 5 retries is dropped from the results
     *** Results are cached — if you upload the same CSV again the LLM is skipped
     """
+    reviews = df["clean_text"].fillna("").tolist()
     batches = [(i, reviews[i:i+batch_size]) for i in range(0, len(reviews), batch_size)]
     success, failed = [], []
     pbar   = st.progress(0)
@@ -458,6 +461,7 @@ def generate_executive_summary(df):
         and what to do next
     *** All of this runs locally — no data is sent to the internet
     """
+    total    = len(df)
     pos      = int((df["predicted_sentiment"] == "positive").sum())
     neg      = int((df["predicted_sentiment"] == "negative").sum())
     mixed    = int(df["predicted_sentiment"].isin(["neutral","neutral/mixed"]).sum())
