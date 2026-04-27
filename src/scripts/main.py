@@ -96,7 +96,7 @@ def run_streamlit_app():
         st.markdown("Ready for Analysis")
         st.markdown("1. Upload your dataset in the sidebar.")
         st.markdown("2. The system immediately makes predictions on basic customer sentiments after upload.")
-        st.markdown("3. Run the LLM theme extraction tool to provide in-depth visualizations. (This will take a while to run.)")
+        st.markdown("3. Run the LLM theme extraction tool to provide more visualizations. (This will take a while to run.)")
 
 def main():
     parser = argparse.ArgumentParser(description="Sentiment Analysis Pipeline Orchestrator")
