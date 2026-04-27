@@ -40,7 +40,7 @@ Example for 3 reviews:
 {{
   "1": ["Customer Service", "Product Quality"],
   "2": ["Speed of Service"],
-  "3": ["Price & Value"]
+  "3": ["Price and Value"]
 }}
 
 Reviews to classify:
@@ -182,7 +182,7 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
                 batch_idx, batch = b
                 status = "failed"
                 batch_themes = [["FAILED (ERROR)"]] * len(batch)
-                print(f"Batch {batch_idx} crashed unexpectedly: {e}")
+                print(f"Batch {batch_idx} crashed: {e}")
 
             if status == "success":
                 for i, (review, valid_themes) in enumerate(zip(batch, batch_themes)):
@@ -204,7 +204,7 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
             completed_batches += 1
             if completed_batches % max(1, (total_batches // 100)) == 0 or completed_batches == total_batches:
                 progress_bar.progress(completed_batches / total_batches)
-                status_text.text(f"Processed review batch {completed_batches}/{total_batches}. Please wait, local LLM parsing takes a while...")
+                status_text.text(f"Processed review batch {completed_batches}/{total_batches}. Please wait, local LLM processing takes a while...")
 
     themes_lookup = {r["original_idx"]: r["themes"] for r in successful_results + failed_results}
     df["themes"] = [themes_lookup.get(i, "FAILED") for i in range(len(df))]
@@ -217,6 +217,6 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
 
     # when extraction is complete
     progress_bar.progress(1.0)
-    status_text.text("Theme extraction complete!")
+    status_text.text("Theme extraction complete")
 
     return df

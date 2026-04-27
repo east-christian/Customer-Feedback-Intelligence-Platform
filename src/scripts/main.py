@@ -19,9 +19,9 @@ THEMES = [
     "Customer Service",       
     "Speed of Service",       
     "Store Environment",       
-    "Price & Value",          
-    "Digital & Rewards",      
-    "Policies & Safety",      
+    "Price and Value",          
+    "Digital and Rewards",      
+    "Policies and Safety",      
 ]
 
 st.set_page_config(page_title="Sentiment Analysis Dashboard", layout="wide")
@@ -99,7 +99,7 @@ def run_streamlit_app():
         st.markdown("3. Run the LLM theme extraction tool to provide more visualizations. (This will take a while to run.)")
 
 def main():
-    parser = argparse.ArgumentParser(description="Sentiment Analysis Pipeline Orchestrator")
+    parser = argparse.ArgumentParser(description="Sentiment Analysis Pipeline Controller")
     parser.add_argument("--input", type=str, help="Path to input CSV for processing")
     parser.add_argument("--no-ui", action="store_true", help="Run without Streamlit")
     

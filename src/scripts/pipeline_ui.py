@@ -34,9 +34,9 @@ def render_dashboard(df, THEMES):
         "Prediction Summary",
         "Overall Sentiment Over Time",
         "Top Extracted Themes",
-        "Theme Sentiment Breakdown & Distribution",
+        "Theme Sentiment Breakdown and Distribution",
         "Time-Oriented Trends",
-        "Phrases & Reviews"
+        "Phrases and Reviews"
     ]
     
     configs = load_configs()
@@ -135,7 +135,7 @@ def render_dashboard(df, THEMES):
                         x="confidence",
                         y="predicted_sentiment",
                         color="predicted_sentiment",
-                        title="Prediction Intensity & Uncertainty Spread",
+                        title="Prediction Intensity and Uncertainty Spread",
                         labels={"confidence": "Model Confidence Score", "predicted_sentiment": "Sentiment"},
                         color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
                     )
@@ -204,9 +204,9 @@ def render_dashboard(df, THEMES):
                     st.warning("No themes available.")
 
             # pie chart for sentiments filtered by theme
-            elif module == "Theme Sentiment Breakdown & Distribution":
+            elif module == "Theme Sentiment Breakdown and Distribution":
 
-                st.subheader("Theme Sentiment Breakdown & Distribution")
+                st.subheader("Theme Sentiment Breakdown and Distribution")
                 if has_themes and not df_exploded.empty:
                     st.markdown("Theme Sentiment Distribution")
                     selected_theme = st.selectbox("Select a Theme:", unique_themes, key="dist_theme")
@@ -225,7 +225,7 @@ def render_dashboard(df, THEMES):
                     )
                     st.plotly_chart(fig_dist, use_container_width=True)
                 
-                    st.markdown(f"**Detailed Data: {selected_theme} vs. Total (Counts & Percentages)**")
+                    st.markdown(f"**Detailed Data: {selected_theme} vs. Total (Counts and Percentages)**")
                     pivot_df = pd.crosstab(df_exploded['Theme'].values, df_exploded['predicted_sentiment'].values)
                     pivot_df.index.name = "Theme"
                     pivot_df.columns.name = "Predicted Sentiment"
@@ -280,9 +280,9 @@ def render_dashboard(df, THEMES):
                     st.warning("Date column or theme extraction required for time-based trends.")
 
             # LLM interpretation of review content   
-            elif module == "Phrases & Reviews":
+            elif module == "Phrases and Reviews":
 
-                st.subheader("Phrases & Review Data")
+                st.subheader("Phrases and Review Data")
                 if has_themes and not df_exploded.empty:
                     deep_theme = st.selectbox("Select Theme to Analyze", unique_themes, key="deep_theme")
                     deep_sentiment = st.selectbox(
@@ -307,7 +307,7 @@ def render_dashboard(df, THEMES):
                 
                     col1, col2 = st.columns([1, 2])
                     with col1:
-                        st.markdown("**Actionable AI Insights**")
+                        st.markdown("**Actionable Information**")
                         if len(review_list) > 0:
                             st.info(f"{len(review_list)} reviews match criteria.")
                             if st.button("Generate LLM Analysis", use_container_width=True):
@@ -413,18 +413,18 @@ def render_dashboard(df, THEMES):
                             
                             if cached_data.get("insights") and llm_df is not None and len(top_ids) > 0:
                                 # pulls reviews indexed by the LLM
-                                st.info("Reviews highlighted by AI as most demonstrative of the root causes:")
+                                st.info("Reviews highlighted by AI as most influential:")
                                 ai_picks = llm_df.iloc[top_ids]
                                 render_feed(ai_picks)
                             elif cached_data.get("insights"):
-                                st.info("AI completed analysis but did not cite specific valid review IDs.")
+                                st.info("AI completed analysis but could not cite specific valid review IDs.")
                             else:
-                                st.info("Run the Root-Cause Analysis to populate AI top picks.")
+                                st.info("Run LLM analysis to show driving customer data.")
                         
                         with tab2:
                             cols = st.columns([2, 1])
                             with cols[0]:
-                                st.markdown(f"*(Showing randomly selected reviews)*")
+                                st.markdown(f"(Showing randomly selected reviews)")
                             with cols[1]:
                                 if st.button("Refresh Feed", use_container_width=True, key=f"btn_refresh_{state_key}"):
                                     st.session_state[f"random_seed_{state_key}"] += 1
@@ -434,6 +434,6 @@ def render_dashboard(df, THEMES):
                                 feed_df = review_list.sample(min(20, len(review_list)), random_state=cur_seed) if len(review_list) > 20 else review_list
                                 render_feed(feed_df)
                             else:
-                                st.info("No reviews available to display.")
+                                st.info("No reviews available.")
                 else:
-                    st.warning("Themes required to deep dive.")
+                    st.warning("Themes required for analysis.")
