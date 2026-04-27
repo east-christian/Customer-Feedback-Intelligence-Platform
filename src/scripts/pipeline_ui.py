@@ -35,7 +35,7 @@ def render_dashboard(df, THEMES):
         "Overall Sentiment Over Time",
         "Top Extracted Themes",
         "Theme Sentiment Breakdown & Distribution",
-        "Time-Based & Emergent Trends",
+        "Time-Oriented Trends",
         "Phrases & Reviews"
     ]
     
@@ -257,7 +257,7 @@ def render_dashboard(df, THEMES):
                     st.warning("No themes available.")
 
             # time-series graph for review counts filtered on theme
-            elif module == "Time-Based & Emergent Trends":
+            elif module == "Time-Oriented Trends":
                 st.subheader("Time-Oriented Trends")
                 if has_themes and not df_exploded.empty and "date" in df.columns:
                     try:
