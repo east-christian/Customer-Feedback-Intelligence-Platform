@@ -62,7 +62,7 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
         try:
             raw = call_llm(prompt)
             
-            # Extract JSON block (handles both [] or {} bounds)
+            # extracts the JSON block
             first_brace = raw.find("{")
             first_bracket = raw.find("[")
             start = min(i for i in [first_brace, first_bracket] if i != -1) if any(i != -1 for i in [first_brace, first_bracket]) else -1
@@ -91,7 +91,7 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
                         except Exception:
                             raise ValueError(f"Could not parse response dictionary: {clean}")
 
-                # Flatten list of dicts to a single dict if LLM wrapped them in an array
+                # proper dict formatting in case the LLM mistakenly formats them in an array
                 parsed_dict = {}
                 if isinstance(parsed_data, list):
                     for item in parsed_data:
@@ -102,7 +102,7 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
                 else:
                     raise ValueError("Response is not a valid structured JSON.")
 
-                # Convert dict back to an ordered array according to the batch size
+                # dict conversion back to array for assignment
                 themes = []
                 for idx in range(1, len(batch) + 1):
                     key = str(idx)
@@ -114,11 +114,11 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
             if len(themes) != len(batch):
                 raise ValueError(f"Batch mismatch: LLM returned {len(themes)} exact theme arrays, but there are {len(batch)} reviews.")
 
-            # Validate that every review was assigned at least one valid theme
+            # theme validation: checks that each review was assigned a proper number of themes.
             validated_themes = []
             for theme_list in themes:
                 valid_for_review = []
-                # Handle cases where LLM returns a dictionary inside the list
+                # reformats list if LLM provides a dict
                 safe_themes = [str(list(t.values())[0]) if isinstance(t, dict) and t else str(t) for t in theme_list]
                 
                 for st_theme in safe_themes:
@@ -143,6 +143,8 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
 
     return batch_idx, batch, None, "failed"
 
+
+# function for extraction of themes using LLM
 def extract_themes(df, themes_list, batch_size=10, max_workers=2):
     """
     Extract themes for the reviews in the DataFrame using the LLM.
@@ -153,7 +155,7 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
     successful_results = []
     failed_results = []
 
-    # Initialize Streamlit progress bar
+    # progress bar for LLM extraction
     progress_bar = st.progress(0)
     status_text = st.empty()
     total_batches = len(batches)
@@ -167,7 +169,7 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
 
         for future in as_completed(futures):
             try:
-                # Add a timeout so the app doesn't hang forever if the LLM freezes
+                # timeout in case of extraction hanging for too long
                 batch_idx, batch, batch_themes, status = future.result(timeout=180)
             except TimeoutError:
                 b = futures[future]
@@ -184,7 +186,7 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
 
             if status == "success":
                 for i, (review, valid_themes) in enumerate(zip(batch, batch_themes)):
-                    # Extract themes returns carefully validated arrays like: ["Store Environment", "Customer Service"]
+                    # returns validated arrays
                     joined_themes = ", ".join(valid_themes)
 
                     successful_results.append({
@@ -198,7 +200,7 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
                         "themes": "FAILED"
                     })
 
-            # Update progress bar less frequently to prevent Streamlit UI from hanging
+            # more progress bar logic (saves resources)
             completed_batches += 1
             if completed_batches % max(1, (total_batches // 100)) == 0 or completed_batches == total_batches:
                 progress_bar.progress(completed_batches / total_batches)
@@ -207,13 +209,13 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
     themes_lookup = {r["original_idx"]: r["themes"] for r in successful_results + failed_results}
     df["themes"] = [themes_lookup.get(i, "FAILED") for i in range(len(df))]
 
-    # Drop any reviews that completely failed extraction to ensure data purity
+    # drops reviews that failed extraction
     initial_len = len(df)
     df = df[~df["themes"].str.contains("FAILED", na=False)]
     if len(df) < initial_len:
         print(f"Dropped {initial_len - len(df)} reviews because the LLM repeatedly hallucinated or timed out.")
 
-    # Complete the progress bar
+    # when extraction is complete
     progress_bar.progress(1.0)
     status_text.text("Theme extraction complete!")
 

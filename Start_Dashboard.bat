@@ -2,14 +2,14 @@
 TITLE Sentiment Analysis Dashboard Launcher
 echo Starting Feedback Intelligence Platform...
 
-:: Navigate to the script's directory
+:: finds the correct directory
 cd /d "%~dp0"
 
-:: Activate the virtual environment
+:: activates virtual environment
 echo Activating virtual environment...
 call .venv\Scripts\activate.bat
 
-:: Run the Streamlit application
+:: starts streamlit
 echo Launching Dashboard in your browser...
 streamlit run src\scripts\main.py
 

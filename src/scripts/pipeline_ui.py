@@ -7,6 +7,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# loads saved dashboard configurations
 def load_configs():
     CONFIG_FILE = PROJECT_ROOT / "src" / "resources" / "saved_tabs.json"
     if CONFIG_FILE.exists():
@@ -17,6 +18,7 @@ def load_configs():
             pass
     return {}
 
+# saves current dashboard configuration for future use
 def save_config(name, modules):
     CONFIG_FILE = PROJECT_ROOT / "src" / "resources" / "saved_tabs.json"
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -26,7 +28,7 @@ def save_config(name, modules):
         json.dump(configs, f, indent=4)
 
 def render_dashboard(df, THEMES):
-    st.sidebar.markdown("---")
+
     st.sidebar.subheader("Dashboard Layout Setup")
     available_modules = [
         "Prediction Summary",
@@ -42,11 +44,13 @@ def render_dashboard(df, THEMES):
     if "active_layout" not in st.session_state:
         st.session_state.active_layout = available_modules
 
+    # loads selected config from selectbox, renders wanted visualizations
     def load_selected_config():
         selected = st.session_state.config_selector
         if selected != "Custom" and selected in configs:
             st.session_state.active_layout = configs[selected]
 
+    # selecbox for loading configurations
     st.sidebar.selectbox(
         "Load a Saved Layout:", 
         ["Custom"] + list(configs.keys()), 
@@ -54,6 +58,7 @@ def render_dashboard(df, THEMES):
         on_change=load_selected_config
     )
 
+    # multiselect for customizing configurations and layout
     selected_modules = st.sidebar.multiselect(
         "Select and organize visualizations:",
         available_modules,
@@ -62,6 +67,7 @@ def render_dashboard(df, THEMES):
         help="Remove modules you don't need, or select them in the order you want them to appear on the page."
     )
     
+    # saves current configuration once named
     with st.sidebar.expander("Save Current Layout"):
         new_layout_name = st.text_input("Preset Name:", placeholder="e.g., Theme Overview")
         if st.button("Save", use_container_width=True):
@@ -71,12 +77,12 @@ def render_dashboard(df, THEMES):
             else:
                 st.warning("Please enter a name.")
                 
-    st.sidebar.markdown("---")
+    # allows swapping between one column and 2 column configurations
     st.sidebar.subheader("Display Settings")
     grid_layout = st.sidebar.radio("Visualizations Grid Layout:", ["1 Column", "2 Columns"], index=0)
     col_count = 1 if "1 Column" in grid_layout else 2
 
-    # Pre-calculate df_exploded if any module requiring themes is active
+    # calculates exploded dataframe for any modules requiring theme extraction
     df_exploded = None
     unique_themes = []
     has_themes = "themes" in df.columns
@@ -85,8 +91,6 @@ def render_dashboard(df, THEMES):
         df_exploded['Theme'] = df_exploded['Theme'].str.strip()
         df_exploded = df_exploded[~df_exploded['Theme'].isin(["FAILED", "", "NOT PROCESSED"])]
         df_exploded = df_exploded.dropna(subset=['Theme', 'predicted_sentiment'])
-        # keep original index for Deep Dive loc matching
-        # df_exploded = df_exploded.reset_index(drop=True) 
         unique_themes = sorted(df_exploded['Theme'].unique().tolist())
 
     if col_count > 1:
@@ -99,10 +103,10 @@ def render_dashboard(df, THEMES):
 
         with active_container:
             if module == "Prediction Summary":
-                st.markdown("---")
+                
                 st.subheader("Prediction Summary")
                 
-                # High-level KPIs
+                # basic kpis
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Total Reviews Analyzed", f"{len(df):,}")
                 if "confidence" in df.columns:
@@ -124,7 +128,7 @@ def render_dashboard(df, THEMES):
                 )
                 st.plotly_chart(fig_pie, use_container_width=True)
                 
-                # Model Intensity / Confidence Distribution
+                # model intensity boxplot
                 if "confidence" in df.columns:
                     fig_box = px.box(
                         df,
@@ -141,12 +145,12 @@ def render_dashboard(df, THEMES):
                     cols_to_show = ["date", "predicted_sentiment", "confidence", "is_mixed"] if "date" in df.columns else ["predicted_sentiment", "confidence", "is_mixed"]
                     if has_themes: cols_to_show.append("themes")
                     cols_to_show.append("clean_text")
-                    # Filter to available columns to be safe
+                    # filter only to available columns
                     cols_to_show = [c for c in cols_to_show if c in df.columns]
                     st.dataframe(df[cols_to_show].head(50), use_container_width=True)
 
             elif module == "Overall Sentiment Over Time":
-                st.markdown("---")
+
                 st.subheader("Overall Sentiment Over Time")
                 if "date" in df.columns:
                     try:
@@ -162,7 +166,7 @@ def render_dashboard(df, THEMES):
                                 x="date",
                                 y="count",
                                 color="predicted_sentiment",
-                                title="Monthly Sentiment Evolution",
+                                title="Monthly Sentiment Progression",
                                 color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
                             )
                             st.plotly_chart(fig, use_container_width=True)
@@ -173,8 +177,9 @@ def render_dashboard(df, THEMES):
                 else:
                     st.warning("No 'date' column found for time-series visualization.")
 
+            # barchart for theme density
             elif module == "Top Extracted Themes":
-                st.markdown("---")
+
                 st.subheader("Top Extracted Themes")
                 if has_themes and not df_exploded.empty:
                     theme_summary = df_exploded['Theme'].value_counts().head(20).reset_index()
@@ -198,11 +203,12 @@ def render_dashboard(df, THEMES):
                 else:
                     st.warning("No themes available.")
 
+            # pie chart for sentiments filtered by theme
             elif module == "Theme Sentiment Breakdown & Distribution":
-                st.markdown("---")
+
                 st.subheader("Theme Sentiment Breakdown & Distribution")
                 if has_themes and not df_exploded.empty:
-                    st.markdown("**Interactive Theme Sentiment Distribution**")
+                    st.markdown("Theme Sentiment Distribution")
                     selected_theme = st.selectbox("Select a Theme:", unique_themes, key="dist_theme")
                 
                     theme_data = df_exploded[df_exploded['Theme'] == selected_theme]
@@ -224,10 +230,10 @@ def render_dashboard(df, THEMES):
                     pivot_df.index.name = "Theme"
                     pivot_df.columns.name = "Predicted Sentiment"
                     
-                    # Add row totals
+                    # row totals
                     pivot_df["Total"] = pivot_df.sum(axis=1)
                     
-                    # Calculate true total from raw reviews (original df) instead of exploded themes
+                    # shows statistics from total raw reviews for comparison
                     raw_counts = df['predicted_sentiment'].value_counts()
                     total_row = {col: raw_counts.get(col, 0) for col in pivot_df.columns if col != "Total"}
                     total_row["Total"] = sum(total_row.values())
@@ -249,10 +255,10 @@ def render_dashboard(df, THEMES):
                     st.dataframe(pivot_df[ordered_cols], use_container_width=True)
                 else:
                     st.warning("No themes available.")
-        
+
+            # time-series graph for review counts filtered on theme
             elif module == "Time-Based & Emergent Trends":
-                st.markdown("---")
-                st.subheader("Time-Based & Emergent Trends")
+                st.subheader("Time-Oriented Trends")
                 if has_themes and not df_exploded.empty and "date" in df.columns:
                     try:
                         df_exploded["date"] = pd.to_datetime(df_exploded["date"])
@@ -272,9 +278,10 @@ def render_dashboard(df, THEMES):
                         st.warning("Could not parse dates for trend chart.")
                 else:
                     st.warning("Date column or theme extraction required for time-based trends.")
-                
-            elif module == "Deep Dive Phrases & Reviews":
-                st.markdown("---")
+
+            # LLM interpretation of review content   
+            elif module == "Phrases & Reviews":
+
                 st.subheader("Phrases & Review Data")
                 if has_themes and not df_exploded.empty:
                     deep_theme = st.selectbox("Select Theme to Analyze", unique_themes, key="deep_theme")
@@ -288,10 +295,10 @@ def render_dashboard(df, THEMES):
                     if deep_sentiment != "All":
                         deep_df = deep_df[deep_df["predicted_sentiment"] == deep_sentiment]
                 
-                    # Get the full original dataframe matching these index items, handling potential duplicates
+                    # finding indexed items, excluding duplicates
                     review_list = df.loc[deep_df.index.unique()]
                     
-                    # Session state keys to persist between renders
+                    # session states gives state persistence
                     state_key = f"insights_{deep_theme}_{deep_sentiment}"
                     if state_key not in st.session_state:
                         st.session_state[state_key] = {"insights": None, "top_indices": [], "sampled_df": None}
@@ -309,11 +316,11 @@ def render_dashboard(df, THEMES):
                                         from pipeline_llm import call_llm
                                         import re
                                     
-                                        # Sample up to 50 reviews to avoid context limits
+                                        # samples up to 50 reviews for LLM inferences
                                         sampled_df_for_llm = review_list.dropna(subset=['clean_text']).sample(min(50, len(review_list)))
                                         sample_texts = sampled_df_for_llm["clean_text"].astype(str).tolist()
                                         
-                                        # Number them to let the LLM reference them
+                                        # review indexing for LLM recall
                                         numbered_reviews = "\n".join([f"Review {i}: {txt}" for i, txt in enumerate(sample_texts)])
                                     
                                         sentiment_context = f"{deep_sentiment} " if deep_sentiment != "All" else ""
@@ -331,7 +338,7 @@ def render_dashboard(df, THEMES):
                                     
                                         raw_response = call_llm(prompt, model="gemma2:9b")
                                         
-                                        # Parse the response
+                                        # response parsing
                                         insights_text = raw_response
                                         top_indices = []
                                         
@@ -340,15 +347,15 @@ def render_dashboard(df, THEMES):
                                             insights_text = parts[0].replace("INSIGHTS:", "").strip()
                                             ids_text = parts[1].strip()
                                             
-                                            # Extract numbers from the second part
+                                            # extract the indices
                                             found_nums = re.findall(r'\d+', ids_text)
-                                            # Convert to int, ensure they represent valid indices in our sample
+                                            # index validation
                                             for num_str in found_nums:
                                                 idx = int(num_str)
                                                 if 0 <= idx < len(sampled_df_for_llm):
                                                     top_indices.append(idx)
                                                     
-                                            # Ensure distinct and max 5
+                                            # no duplicates, 5 max reviews pulled for evidence
                                             top_indices = list(dict.fromkeys(top_indices))[:5]
                                             
                                         st.session_state[state_key] = {
@@ -359,7 +366,7 @@ def render_dashboard(df, THEMES):
                                     except Exception as e:
                                         st.error(f"Could not generate insights: {e}")
                                         
-                            # Display cached insights if available
+                            # displays any cached insights
                             cached_data = st.session_state.get(state_key, {})
                             if cached_data.get("insights"):
                                 st.success("Analysis Complete")
@@ -376,7 +383,7 @@ def render_dashboard(df, THEMES):
                                 for _, row in feed_df.iterrows():
                                     sent = str(row.get('predicted_sentiment', 'Unknown')).upper()
                                     
-                                    # Building the info subheader
+                                    # structure for review display
                                     header_str = f"**{sent}**"
                                     if 'stars' in row and pd.notna(row['stars']):
                                         header_str += f" | {'★' * int(row['stars'])}"
@@ -386,7 +393,7 @@ def render_dashboard(df, THEMES):
                                     st.markdown(header_str)
                                     st.markdown(f"> *\"{row.get('clean_text', '')}\"*")
                                     
-                                    # Tags / Metadata mapping
+                                    # mapping tags and confidence level
                                     tags = []
                                     if 'themes' in row and pd.notna(row['themes']):
                                         tags.append(f"**{row['themes']}**")
@@ -405,7 +412,7 @@ def render_dashboard(df, THEMES):
                             llm_df = cached_data.get("sampled_df", None)
                             
                             if cached_data.get("insights") and llm_df is not None and len(top_ids) > 0:
-                                # Pick out exactly the rows the LLM cited
+                                # pulls reviews indexed by the LLM
                                 st.info("Reviews highlighted by AI as most demonstrative of the root causes:")
                                 ai_picks = llm_df.iloc[top_ids]
                                 render_feed(ai_picks)
