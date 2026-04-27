@@ -135,7 +135,7 @@ def render_dashboard(df, THEMES):
                         x="confidence",
                         y="predicted_sentiment",
                         color="predicted_sentiment",
-                        title="Prediction Intensity and Uncertainty Spread",
+                        title="Prediction Intensity and Uncertainty",
                         labels={"confidence": "Model Confidence Score", "predicted_sentiment": "Sentiment"},
                         color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
                     )
