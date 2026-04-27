@@ -34,7 +34,7 @@ def render_dashboard(df, THEMES):
         "Prediction Summary",
         "Overall Sentiment Over Time",
         "Top Extracted Themes",
-        "Theme Sentiment Breakdown and Distribution",
+        "Theme Sentiment Distribution",
         "Time-Oriented Trends",
         "Phrases and Reviews"
     ]
@@ -204,9 +204,9 @@ def render_dashboard(df, THEMES):
                     st.warning("No themes available.")
 
             # pie chart for sentiments filtered by theme
-            elif module == "Theme Sentiment Breakdown and Distribution":
+            elif module == "Theme Sentiment Distribution":
 
-                st.subheader("Theme Sentiment Breakdown and Distribution")
+                st.subheader("Theme Sentiment Distribution")
                 if has_themes and not df_exploded.empty:
                     st.markdown("Theme Sentiment Distribution")
                     selected_theme = st.selectbox("Select a Theme:", unique_themes, key="dist_theme")
