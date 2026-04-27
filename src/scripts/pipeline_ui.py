@@ -36,7 +36,7 @@ def render_dashboard(df, THEMES):
         "Top Extracted Themes",
         "Theme Sentiment Breakdown & Distribution",
         "Time-Based & Emergent Trends",
-        "Deep Dive Phrases & Reviews"
+        "Phrases & Reviews"
     ]
     
     configs = load_configs()

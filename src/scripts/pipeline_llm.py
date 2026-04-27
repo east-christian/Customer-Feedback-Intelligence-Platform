@@ -204,7 +204,7 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
             completed_batches += 1
             if completed_batches % max(1, (total_batches // 100)) == 0 or completed_batches == total_batches:
                 progress_bar.progress(completed_batches / total_batches)
-                status_text.text(f"Processed review batch {completed_batches}/{total_batches}. Please wait, local LLM parsing is intensive...")
+                status_text.text(f"Processed review batch {completed_batches}/{total_batches}. Please wait, local LLM parsing takes a while...")
 
     themes_lookup = {r["original_idx"]: r["themes"] for r in successful_results + failed_results}
     df["themes"] = [themes_lookup.get(i, "FAILED") for i in range(len(df))]
