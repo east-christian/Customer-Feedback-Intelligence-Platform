@@ -57,8 +57,10 @@ def run_streamlit_app():
 
     if uploaded_file is not None:
         if st.session_state.processed_df is None or st.session_state.get("last_uploaded_filename") != uploaded_file.name:
+
             # if there is a new or unprocessed file
             with st.spinner("Processing file, predicting sentiment"):
+                
                 # saves a temporary file in case of interruption
                 temp_path = OUTPUT_DIR / uploaded_file.name
                 temp_path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,12 +93,17 @@ def run_streamlit_app():
             render_dashboard(df, THEMES)
 
     else:
-        st.info("Please upload a CSV file containing at least a 'text' or 'raw_text' column.")
+        st.info("Please upload a CSV file in the sidebar to begin review analysis.")
         
-        st.markdown("Ready for Analysis")
-        st.markdown("1. Upload your dataset in the sidebar.")
-        st.markdown("2. The system immediately makes predictions on basic customer sentiments after upload.")
-        st.markdown("3. Run the LLM theme extraction tool to provide more visualizations. (This will take a while to run.)")
+        st.markdown("**For data processing to complete without error, the uploaded CSV file must follow these requirements:**")
+        st.markdown("The CSV must contain a **'text'** or **'raw_text'** column.")
+        st.markdown("The CSV must contain a **'review_id'** column. The column may be empty, reviews with null id will have one generated for you.")
+        st.markdown("The CSV must contain a **'stars'** column, of integer values from 1-5.")
+        st.markdown("The CSV must contain a **'date'** column with datetime or date formatting for proper time-series visualizations to function.")
+        st.markdown("**Steps to complete analysis on your data once formatted properly are as follows:**")
+        st.markdown("1) Upload your dataset in the sidebar.")
+        st.markdown("2) The system immediately makes predictions on basic customer sentiments after upload.")
+        st.markdown("3) Run the LLM theme extraction tool to provide more visualizations. (This will take a while to run.)")
 
 def main():
     parser = argparse.ArgumentParser(description="Sentiment Analysis Pipeline Controller")

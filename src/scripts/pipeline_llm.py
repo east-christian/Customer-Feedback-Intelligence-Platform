@@ -75,7 +75,8 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
                 raise ValueError("Warning: LLM output did not contain valid JSON wrapped in {} or []")
             else:
                 clean = raw[start:end]
-                # Try parsing
+
+                # try parsing data
                 try:
                     parsed_data = json.loads(clean)
                 except json.JSONDecodeError:
@@ -83,7 +84,8 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
                         parsed_data = ast.literal_eval(clean)
                     except Exception:
                         try:
-                            # If it spit out comma-separated dicts without outer brackets
+
+                            # if it spit out comma-separated dicts without outer brackets
                             if clean.strip().startswith("{") and clean.strip().endswith("}"):
                                 parsed_data = json.loads(f"[{clean}]")
                             else:
@@ -118,6 +120,7 @@ def extract_themes_with_retry(batch_info, themes_list, max_retries=5):
             validated_themes = []
             for theme_list in themes:
                 valid_for_review = []
+
                 # reformats list if LLM provides a dict
                 safe_themes = [str(list(t.values())[0]) if isinstance(t, dict) and t else str(t) for t in theme_list]
                 
@@ -169,6 +172,7 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
 
         for future in as_completed(futures):
             try:
+
                 # timeout in case of extraction hanging for too long
                 batch_idx, batch, batch_themes, status = future.result(timeout=180)
             except TimeoutError:
@@ -186,6 +190,7 @@ def extract_themes(df, themes_list, batch_size=10, max_workers=2):
 
             if status == "success":
                 for i, (review, valid_themes) in enumerate(zip(batch, batch_themes)):
+                    
                     # returns validated arrays
                     joined_themes = ", ".join(valid_themes)
 

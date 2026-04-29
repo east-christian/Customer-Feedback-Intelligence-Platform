@@ -120,6 +120,12 @@ def load_or_train_model():
 
 # cleans review text for processing, adds cleaned text to clean_text column
 def preprocess_reviews(df):
+
+    # assigns a review id if missing from csv
+    if "review_id" not in df.columns:
+        df["review_id"] = [f"review_{i}" for i in range(len(df))]
+    
+    #cleans review text for easier processing
     if "clean_text" in df.columns:
         df["clean_text"] = df["clean_text"].fillna("").astype(str).str.lower()
     elif "text" in df.columns:
