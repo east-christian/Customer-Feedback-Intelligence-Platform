@@ -1,9 +1,9 @@
-# Sentiment Analysis & Feedback Intelligence Platform
+Sentiment Analysis & Feedback Intelligence Platform
 
 CSCI 491 Sentiment Analysis Project with the goal of predicting customer sentiments and extraction of important themes using review data
 
 
-## Table of Contents
+Table of Contents
 
 - Installation
 - Ollama Setup
