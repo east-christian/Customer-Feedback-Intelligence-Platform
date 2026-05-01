@@ -4,9 +4,6 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 from sklearn.feature_extraction.text import CountVectorizer
-import io
-from fpdf import FPDF
-from datetime import datetime
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -32,159 +29,20 @@ def save_config(name, modules):
 
 def render_dashboard(df, THEMES):
 
-    # Global font size increase (+20) and color overrides
-    st.markdown("""
-        <style>
-        /* Base text */
-        html, body, [class*="css"] {
-            font-size: 120% !important;
-        }
-        /* Streamlit metric labels and values */
-        [data-testid="stMetricLabel"] p,
-        [data-testid="stMetricValue"] {
-            font-size: 1.25rem !important;
-            font-weight: 700 !important;
-        }
-        /* Dataframe / table text */
-        .stDataFrame, .stDataFrame table, .stDataFrame td, .stDataFrame th {
-            font-size: 1.1rem !important;
-            font-weight: 600 !important;
-        }
-        .stDataFrame th {
-            font-weight: 700 !important;
-        }
-        /* Sidebar text */
-        section[data-testid="stSidebar"] * {
-            font-size: 1.05rem !important;
-        }
-        /* Expander headers */
-        .streamlit-expanderHeader {
-            font-size: 1.1rem !important;
-            font-weight: 700 !important;
-        }
-        /* Tab labels */
-        button[data-baseweb="tab"] {
-            font-size: 1.1rem !important;
-            font-weight: 700 !important;
-        }
-        /* Caption text */
-        .stCaption {
-            font-size: 1rem !important;
-        }
-        /* Chart axis labels and titles rendered in DOM */
-        .js-plotly-plot .plotly .xtick text,
-        .js-plotly-plot .plotly .ytick text {
-            font-size: 14px !important;
-            font-weight: 700 !important;
-        }
-        .js-plotly-plot .plotly .g-gtitle text {
-            font-size: 18px !important;
-            font-weight: 700 !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    # Plotly global font template applied to every new figure
-    import plotly.io as pio
-    pio.templates["custom_large"] = pio.templates["plotly"]
-    pio.templates["custom_large"].layout.font = dict(size=16, color="#1f2937")
-    pio.templates["custom_large"].layout.title.font = dict(size=20, color="#1e3a5f")
-    pio.templates["custom_large"].layout.xaxis.tickfont = dict(size=15)
-    pio.templates["custom_large"].layout.xaxis.title.font = dict(size=16)
-    pio.templates["custom_large"].layout.yaxis.tickfont = dict(size=15)
-    pio.templates["custom_large"].layout.yaxis.title.font = dict(size=16)
-    pio.templates["custom_large"].layout.legend.font = dict(size=15)
-    pio.templates["custom_large"].layout.legend.title.font = dict(size=16)
-    pio.templates.default = "custom_large"
-    # end global overrides
-
-    # date range filter for time-based analysis
-    st.sidebar.divider()
-    st.sidebar.subheader("Date Range Filter")
-    
-    has_date_column = "date" in df.columns
-    original_count = len(df)
-    
-    if has_date_column:
-        try:
-
-            # ensure date column is datetime
-            df["date"] = pd.to_datetime(df["date"])
-            
-            # get min and max dates from the data
-            min_date = df["date"].min().date()
-            max_date = df["date"].max().date()
-            
-            # create date range selector (always active)
-            col1, col2 = st.sidebar.columns(2)
-            with col1:
-                start_date = st.date_input(
-                    "From:",
-                    value=min_date,
-                    min_value=min_date,
-                    max_value=max_date,
-                    key="filter_start_date",
-                    help="Select start date:"
-                )
-            with col2:
-                end_date = st.date_input(
-                    "To:",
-                    value=max_date,
-                    min_value=min_date,
-                    max_value=max_date,
-                    key="filter_end_date",
-                    help="Select end date:"
-                )
-            
-            # validate date range
-            if start_date > end_date:
-                st.sidebar.error("The start date must be before end date.")
-            else:
-
-                # apply date filter
-                df = df[(df["date"].dt.date >= start_date) & (df["date"].dt.date <= end_date)]
-                
-                # show filter summary
-                filtered_count = len(df)
-                if filtered_count < original_count:
-                    st.sidebar.success(
-                        f"Filtered: {filtered_count:,} of {original_count:,} reviews"
-                    )
-                else:
-                    st.sidebar.info("All reviews are included")
-        except Exception as e:
-            st.sidebar.warning(f"Could not parse date column: {e}")
-            has_date_column = False
-    else:
-        st.sidebar.info("Your CSV does not contain a date column, or lacks date information.")
-    
-    st.sidebar.divider()
-
     st.sidebar.subheader("Dashboard Layout Setup")
     available_modules = [
         "Prediction Summary",
         "Overall Sentiment Over Time",
         "Top Extracted Themes",
-        "Theme Sentiment Distribution",
+        "Theme Sentiment Breakdown & Distribution",
         "Time-Oriented Trends",
-        "Phrases and Reviews",
-        "Negative Spike Detection",
-        "Theme Sentiment Heatmap",
-        "About & Methodology"
+        "Phrases & Reviews"
     ]
-
-    charts_for_report = {}
-    texts_for_report = {}
-    reviews_for_report = {}
     
     configs = load_configs()
     
     if "active_layout" not in st.session_state:
         st.session_state.active_layout = available_modules
-    else:
-
-        # cleans session state to prevent errors
-        st.session_state.active_layout = [m for m in st.session_state.active_layout if m in available_modules]
 
     # loads selected config from selectbox, renders wanted visualizations
     def load_selected_config():
@@ -209,21 +67,6 @@ def render_dashboard(df, THEMES):
         help="Remove modules you don't need, or select them in the order you want them to appear on the page."
     )
     
-        # allows swapping between 1, 2, and 3 column configurations
-    grid_layout = st.sidebar.selectbox(
-        "Grid Layout:",
-        ["1 Column", "2 Columns", "3 Columns"],
-        index=0,
-        help="Choose how many columns to display visualizations across"
-    )
-    
-    if "1 Column" in grid_layout:
-        col_count = 1
-    elif "2 Columns" in grid_layout:
-        col_count = 2
-    else:
-        col_count = 3
-
     # saves current configuration once named
     with st.sidebar.expander("Save Current Layout"):
         new_layout_name = st.text_input("Preset Name:", placeholder="e.g., Theme Overview")
@@ -234,7 +77,10 @@ def render_dashboard(df, THEMES):
             else:
                 st.warning("Please enter a name.")
                 
-
+    # allows swapping between one column and 2 column configurations
+    st.sidebar.subheader("Display Settings")
+    grid_layout = st.sidebar.radio("Visualizations Grid Layout:", ["1 Column", "2 Columns"], index=0)
+    col_count = 1 if "1 Column" in grid_layout else 2
 
     # calculates exploded dataframe for any modules requiring theme extraction
     df_exploded = None
@@ -251,23 +97,9 @@ def render_dashboard(df, THEMES):
         grid_containers = st.columns(col_count)
     else:
         grid_containers = [st.container()]
-    
-    # index tracking for visualization placement on grid
-    module_index = 0  
-    
-    for module in selected_modules:
 
-        # gives time-oriented visualizations multiple columns of leg-room
-        time_oriented = module in ["Overall Sentiment Over Time", "Time-Oriented Trends"]
-        
-        
-        if time_oriented and col_count > 1:
-            active_container = st.container()
-        else:
-
-            # if not time-oriented, use one column per visualization
-            active_container = grid_containers[module_index % col_count]
-            module_index += 1
+    for i, module in enumerate(selected_modules):
+        active_container = grid_containers[i % col_count]
 
         with active_container:
             if module == "Prediction Summary":
@@ -291,12 +123,10 @@ def render_dashboard(df, THEMES):
                     values="count",
                     title="Predicted Sentiment Distribution",
                     color="sentiment",
-                    color_discrete_map={"positive": "#5a9e6f", "neutral": "#8a8a8a", "neutral/mixed": "#8a8a8a", "negative": "#4a6fa5"},
+                    color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"},
                     hole=0.4
                 )
                 st.plotly_chart(fig_pie, use_container_width=True)
-                charts_for_report["Predicted Sentiment Distribution"] = fig_pie
-                
                 
                 # model intensity boxplot
                 if "confidence" in df.columns:
@@ -305,18 +135,16 @@ def render_dashboard(df, THEMES):
                         x="confidence",
                         y="predicted_sentiment",
                         color="predicted_sentiment",
-                        title="Prediction Intensity and Uncertainty",
+                        title="Prediction Intensity & Uncertainty Spread",
                         labels={"confidence": "Model Confidence Score", "predicted_sentiment": "Sentiment"},
-                        color_discrete_map={"positive": "#5a9e6f", "neutral": "#8a8a8a", "neutral/mixed": "#8a8a8a", "negative": "#4a6fa5"}
+                        color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
                     )
                     st.plotly_chart(fig_box, use_container_width=True)
-                    charts_for_report["Prediction Intensity and Uncertainty"] = fig_box
                 
                 with st.expander("View Raw Prediction Output"):
                     cols_to_show = ["date", "predicted_sentiment", "confidence", "is_mixed"] if "date" in df.columns else ["predicted_sentiment", "confidence", "is_mixed"]
                     if has_themes: cols_to_show.append("themes")
                     cols_to_show.append("clean_text")
-
                     # filter only to available columns
                     cols_to_show = [c for c in cols_to_show if c in df.columns]
                     st.dataframe(df[cols_to_show].head(50), use_container_width=True)
@@ -339,10 +167,9 @@ def render_dashboard(df, THEMES):
                                 y="count",
                                 color="predicted_sentiment",
                                 title="Monthly Sentiment Progression",
-                                color_discrete_map={"positive": "#5a9e6f", "neutral": "#8a8a8a", "neutral/mixed": "#8a8a8a", "negative": "#4a6fa5"}
+                                color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
                             )
                             st.plotly_chart(fig, use_container_width=True)
-                            charts_for_report["Monthly Sentiment Progression"] = fig
                         else:
                             st.info("Not enough date variance to plot time series.")
                     except Exception:
@@ -373,14 +200,13 @@ def render_dashboard(df, THEMES):
                         )
                         fig.update_layout(yaxis={'categoryorder':'total ascending'})
                         st.plotly_chart(fig, use_container_width=True)
-                        charts_for_report["Top Extracted Themes"] = fig
                 else:
                     st.warning("No themes available.")
 
             # pie chart for sentiments filtered by theme
-            elif module == "Theme Sentiment Distribution":
+            elif module == "Theme Sentiment Breakdown & Distribution":
 
-                st.subheader("Theme Sentiment Distribution")
+                st.subheader("Theme Sentiment Breakdown & Distribution")
                 if has_themes and not df_exploded.empty:
                     st.markdown("Theme Sentiment Distribution")
                     selected_theme = st.selectbox("Select a Theme:", unique_themes, key="dist_theme")
@@ -395,12 +221,11 @@ def render_dashboard(df, THEMES):
                         values="count", 
                         title=f"Sentiment Distribution for '{selected_theme}'",
                         color="sentiment", 
-                        color_discrete_map={"positive": "#5a9e6f", "neutral": "#8a8a8a", "neutral/mixed": "#8a8a8a", "negative": "#4a6fa5"}
+                        color_discrete_map={"positive": "green", "neutral": "gray", "neutral/mixed": "gray", "negative": "red"}
                     )
                     st.plotly_chart(fig_dist, use_container_width=True)
-                    charts_for_report["Theme Sentiment Distribution"] = fig_dist
                 
-                    st.markdown(f"**Detailed Data: {selected_theme} vs. Total (Counts and Percentages)**")
+                    st.markdown(f"**Detailed Data: {selected_theme} vs. Total (Counts & Percentages)**")
                     pivot_df = pd.crosstab(df_exploded['Theme'].values, df_exploded['predicted_sentiment'].values)
                     pivot_df.index.name = "Theme"
                     pivot_df.columns.name = "Predicted Sentiment"
@@ -449,16 +274,15 @@ def render_dashboard(df, THEMES):
                             markers=True
                         )
                         st.plotly_chart(fig_trend, use_container_width=True)
-                        charts_for_report["Time-Oriented Trends"] = fig_trend
                     except Exception as e:
                         st.warning("Could not parse dates for trend chart.")
                 else:
                     st.warning("Date column or theme extraction required for time-based trends.")
 
             # LLM interpretation of review content   
-            elif module == "Phrases and Reviews":
+            elif module == "Phrases & Reviews":
 
-                st.subheader("Phrases and Review Data")
+                st.subheader("Phrases & Review Data")
                 if has_themes and not df_exploded.empty:
                     deep_theme = st.selectbox("Select Theme to Analyze", unique_themes, key="deep_theme")
                     deep_sentiment = st.selectbox(
@@ -483,7 +307,7 @@ def render_dashboard(df, THEMES):
                 
                     col1, col2 = st.columns([1, 2])
                     with col1:
-                        st.markdown("**Actionable Information**")
+                        st.markdown("**Actionable AI Insights**")
                         if len(review_list) > 0:
                             st.info(f"{len(review_list)} reviews match criteria.")
                             if st.button("Generate LLM Analysis", use_container_width=True):
@@ -548,17 +372,6 @@ def render_dashboard(df, THEMES):
                                 st.success("Analysis Complete")
                                 st.markdown(cached_data["insights"])
                                 
-                                # store insights for PDF export
-                                insight_key = f"Insights: {deep_theme} ({deep_sentiment})"
-                                texts_for_report[insight_key] = cached_data["insights"]
-                                
-                                # store associated reviews for PDF export
-                                top_ids = cached_data.get("top_indices", [])
-                                llm_df = cached_data.get("sampled_df", None)
-                                if llm_df is not None and len(top_ids) > 0:
-                                    ai_picks = llm_df.iloc[top_ids]
-                                    reviews_for_report[insight_key] = ai_picks
-                                
                         else:
                             st.info("No reviews match criteria.")
                     with col2:
@@ -599,20 +412,19 @@ def render_dashboard(df, THEMES):
                             llm_df = cached_data.get("sampled_df", None)
                             
                             if cached_data.get("insights") and llm_df is not None and len(top_ids) > 0:
-
                                 # pulls reviews indexed by the LLM
-                                st.info("Reviews highlighted by AI as most influential:")
+                                st.info("Reviews highlighted by AI as most demonstrative of the root causes:")
                                 ai_picks = llm_df.iloc[top_ids]
                                 render_feed(ai_picks)
                             elif cached_data.get("insights"):
-                                st.info("AI completed analysis but could not cite specific valid review IDs.")
+                                st.info("AI completed analysis but did not cite specific valid review IDs.")
                             else:
-                                st.info("Run LLM analysis to show driving customer data.")
+                                st.info("Run the Root-Cause Analysis to populate AI top picks.")
                         
                         with tab2:
                             cols = st.columns([2, 1])
                             with cols[0]:
-                                st.markdown(f"(Showing randomly selected reviews)")
+                                st.markdown(f"*(Showing randomly selected reviews)*")
                             with cols[1]:
                                 if st.button("Refresh Feed", use_container_width=True, key=f"btn_refresh_{state_key}"):
                                     st.session_state[f"random_seed_{state_key}"] += 1
@@ -621,529 +433,7 @@ def render_dashboard(df, THEMES):
                                 cur_seed = st.session_state[f"random_seed_{state_key}"]
                                 feed_df = review_list.sample(min(20, len(review_list)), random_state=cur_seed) if len(review_list) > 20 else review_list
                                 render_feed(feed_df)
-                                
-                                # store random feed reviews for optional PDF export
-                                random_key = f"Random Reviews: {deep_theme} ({deep_sentiment})"
-                                if st.checkbox("Include these reviews in PDF export", key=f"export_random_{state_key}"):
-                                    reviews_for_report[random_key] = feed_df
-                                elif random_key in reviews_for_report:
-                                    del reviews_for_report[random_key]
                             else:
-                                st.info("No reviews available.")
+                                st.info("No reviews available to display.")
                 else:
-                    st.warning("Themes required for analysis.")
-
-            elif module == "Negative Spike Detection":
-                st.subheader("Negative Review Spike Detection")
-                st.caption("Months where negative reviews exceeded 1.5 standard deviations above average — likely indicates an incident.")
-                render_spike_detection(df)
-
-            elif module == "Theme Sentiment Heatmap":
-                st.subheader("Theme × Sentiment Heatmap")
-                st.caption("Visual breakdown of how each theme is perceived across sentiment classes.")
-                if has_themes and df_exploded is not None and not df_exploded.empty:
-                    render_theme_heatmap(df_exploded)
-                else:
-                    st.warning("Theme extraction required for heatmap.")
-
-            elif module == "About & Methodology":
-                render_about_page()
-
-    # report builder: allows client to export dashboard information in PDF format
-    with st.sidebar:
-        st.subheader("Export to PDF Report")
-        # allows client to choose a title for their report
-        report_title = st.text_input("Title", value="Customer Feedback Report")
-        
-        # allows client to upload their company logo to personalize report
-        logo_file = st.file_uploader(
-            "Upload Company Logo (Optional)", 
-            type=["png", "jpg", "jpeg"],
-            help="Add your company logo to personalize the report"
-        )
-
-        if st.button("Export to PDF", use_container_width=True):
-            if not charts_for_report and not texts_for_report:
-                st.warning("Please have at least one chart or insight active to export.")
-            else:
-                with st.spinner("Creating PDF..."):
-                    pdf = FPDF()
-                    pdf.add_page()
-
-                    # sets title to value given by user above
-                    pdf.set_font("times", "B", 18)
-                    safe_title = report_title.encode('latin-1', 'replace').decode('latin-1')
-                    pdf.cell(0, 15, safe_title, align="C", new_x="LMARGIN", new_y="NEXT")
-                    
-                    # provides the date of report creation
-                    pdf.set_font("times", "", 12)
-                    current_date = datetime.now().strftime("%B %d, %Y")
-                    pdf.cell(0, 8, current_date, align="C", new_x="LMARGIN", new_y="NEXT")
-                    pdf.ln(5)
-                    
-                    # renders company logo
-                    if logo_file is not None:
-                        try:
-                            logo_bytes = io.BytesIO(logo_file.getvalue())
-
-                            # centers the logo in the title page
-                            pdf.image(logo_bytes, x=80, y=pdf.get_y(), w=50)
-                            pdf.ln(35) 
-                        except Exception:
-
-                            # skips logo render if any errors arise
-                            pass 
-                    else:
-                        pdf.ln(10)
-
-                    # renders charts in report, one per page
-                    for title, fig in charts_for_report.items():
-
-                        # margins for all charts, preventing visualization cutoff
-                        fig.update_layout(
-
-                            # generous margins for all chart types
-                            margin=dict(l=200, r=60, t=100, b=80), 
-                            font=dict(size=13),
-                            title_font_size=19,
-                            showlegend=True,
-                            legend=dict(
-                                orientation="v",
-                                yanchor="top",
-                                y=0.99,
-                                xanchor="left",
-                                x=1.02
-                            ),
-
-                            # final margin adjustment
-                            yaxis=dict(automargin=True),  
-                            xaxis=dict(automargin=True)
-                        )
-                        
-                        # checks for time-oriented visualizations
-                        time_oriented = any(keyword in title for keyword in ["Time", "Progression", "Trends", "Over Time"])
-                        
-                        if time_oriented:
-                            
-                            # if time-series, renders visualization in landscape orientation
-                            pdf.add_page(orientation='L')
-                            
-                            # sets a larger canvas for landscape visualization
-                            img_data = fig.to_image(format="png", width=1800, height=900, scale=2)
-                            img_relay = io.BytesIO(img_data)
-                            
-                            pdf.set_font("times", "B", 14)
-                            safe_chart_title = title.encode('latin-1', 'replace').decode('latin-1')
-                            pdf.cell(0, 10, safe_chart_title, align="L", new_x="LMARGIN", new_y="NEXT")
-                            pdf.ln(5)
-                            
-                            # renders image
-                            pdf.image(img_relay, x=10, y=pdf.get_y(), w=277, h=138)
-                        else:
-
-                            # other visualizations are oriented in portrait
-                            pdf.add_page()
-
-                            # sets smaller canvas for portrait visualization orientation
-                            img_data = fig.to_image(format="png", width=1400, height=1050, scale=2)
-                            img_relay = io.BytesIO(img_data)
-
-                            pdf.set_font("times", "B", 14)
-                            safe_chart_title = title.encode('latin-1', 'replace').decode('latin-1')
-                            pdf.cell(0, 10, safe_chart_title, align="L", new_x="LMARGIN", new_y="NEXT")
-                            pdf.ln(5)
-                            
-                            # renders image
-                            pdf.image(img_relay, x=10, y=pdf.get_y(), w=190, h=143)
-                    
-                    # exports ai review insights to pdf with supporting evidence
-                    for title, text_content in texts_for_report.items():
-                        pdf.add_page()
-                        pdf.set_font("times", "B", 14)
-                        safe_text_title = title.encode('latin-1', 'replace').decode('latin-1')
-                        pdf.cell(0, 10, safe_text_title, align="L", new_x="LMARGIN", new_y="NEXT")
-                        pdf.ln(5)
-                        
-                        pdf.set_font("times", "", 12)
-                        safe_content = text_content.replace('**', '').replace('*', '-').encode('latin-1', 'replace').decode('latin-1')
-                        pdf.multi_cell(0, 7, safe_content)
-                        
-                        # include associated reviews as supporting evidence
-                        if title in reviews_for_report:
-                            pdf.ln(5)
-                            pdf.set_font("times", "B", 12)
-                            pdf.cell(0, 8, "Relevant Selected Reviews:", new_x="LMARGIN", new_y="NEXT")
-                            pdf.ln(3)
-                            
-                            review_df = reviews_for_report[title]
-                            pdf.set_font("times", "", 10)
-                            
-                            for idx, (_, row) in enumerate(review_df.iterrows(), 1):
-                                # check space and add page if needed
-                                if pdf.get_y() > 220:
-                                    pdf.add_page()
-                                
-                                # sets back to left margin before each review
-                                pdf.set_x(pdf.l_margin)
-                                pdf.set_font("times", "B", 10)
-                                
-                                # review header
-                                sent = str(row.get('predicted_sentiment', 'Unknown')).upper()
-                                header_parts = [f"Review {idx}: {sent}"]
-                                
-                                if 'stars' in row and pd.notna(row['stars']):
-                                    stars = int(row['stars'])
-                                    header_parts.append(f"{stars} stars")
-                                if 'date' in row and pd.notna(row['date']):
-                                    header_parts.append(f"Date: {row['date']}")
-                                
-                                header_text = " | ".join(header_parts)
-                                safe_header = header_text.encode('latin-1', 'replace').decode('latin-1')
-                                pdf.multi_cell(0, 5, safe_header)
-                                
-                                # check space after header
-                                if pdf.get_y() > 220:
-                                    pdf.add_page()
-                                
-                                # back to left margin again
-                                pdf.set_x(pdf.l_margin)
-                                pdf.set_font("times", "", 10)
-                                review_text = row.get('clean_text', '')
-                                safe_review = str(review_text).encode('latin-1', 'replace').decode('latin-1')
-                                
-                                # gets rid of additional spaces
-                                pdf.multi_cell(0, 5, f'"{safe_review}"')
-
-                                # check space before metadata
-                                if pdf.get_y() > 240:
-                                    pdf.add_page()
-                                
-                                # metadata
-                                meta_parts = []
-                                if 'themes' in row and pd.notna(row['themes']):
-                                    theme_text = str(row['themes']).replace('**', '')
-                                    meta_parts.append(f"Theme: {theme_text}")
-                                if 'confidence' in row and pd.notna(row['confidence']):
-                                    meta_parts.append(f"Confidence: {row['confidence']:.1%}")
-                                if 'is_mixed' in row and row['is_mixed']:
-                                    meta_parts.append("Mixed Sentiment")
-                                
-                                if meta_parts:
-                                    pdf.set_x(pdf.l_margin)
-                                    pdf.set_font("times", "I", 9)
-                                    meta_text = " | ".join(meta_parts)
-                                    safe_meta = meta_text.encode('latin-1', 'replace').decode('latin-1')
-                                    pdf.multi_cell(0, 4, safe_meta)
-                                
-                                pdf.ln(3)
-                    
-                    # export any additional random reviews selected for export
-                    for title in reviews_for_report:
-                        if title not in texts_for_report: 
-                            pdf.add_page()
-                            pdf.set_font("times", "B", 14)
-                            safe_title = title.encode('latin-1', 'replace').decode('latin-1')
-                            pdf.cell(0, 10, safe_title, align="L", new_x="LMARGIN", new_y="NEXT")
-                            pdf.ln(5)
-                            
-                            review_df = reviews_for_report[title]
-                            pdf.set_font("times", "", 10)
-                            
-                            for idx, (_, row) in enumerate(review_df.iterrows(), 1):
-
-                                # check space before starting new review
-                                if pdf.get_y() > 220:
-                                    pdf.add_page()
-                                    pdf.set_font("times", "", 10)
-                                
-                                
-                                sent = str(row.get('predicted_sentiment', 'Unknown')).upper()
-                                header_parts = [f"Review {idx}: {sent}"]
-                                
-                                if 'stars' in row and pd.notna(row['stars']):
-                                    stars = int(row['stars'])
-                                    header_parts.append(f"{stars} stars")
-                                if 'date' in row and pd.notna(row['date']):
-                                    header_parts.append(f"Date: {row['date']}")
-                                
-                                header_text = " | ".join(header_parts)
-                                safe_header = header_text.encode('latin-1', 'replace').decode('latin-1')
-                                pdf.set_font("times", "B", 10)
-                                pdf.multi_cell(0, 5, safe_header)
-                                
-                                # check end of page after end of review
-                                if pdf.get_y() > 220:
-                                    pdf.add_page()
-                                    pdf.set_font("times", "", 10)
-                                
-                                # review text
-                                review_text = row.get('clean_text', '')
-                                safe_review = str(review_text).encode('latin-1', 'replace').decode('latin-1')
-                                pdf.set_font("times", "", 10)
-                                pdf.multi_cell(0, 5, f'  "{safe_review}"')
-                                
-                                # check space before metadata
-                                if pdf.get_y() > 240:
-                                    pdf.add_page()
-                                    pdf.set_font("times", "", 10)
-                                
-                                # metadata
-                                meta_parts = []
-                                if 'themes' in row and pd.notna(row['themes']):
-                                    theme_text = str(row['themes']).replace('**', '')
-                                    meta_parts.append(f"Theme: {theme_text}")
-                                if 'confidence' in row and pd.notna(row['confidence']):
-                                    meta_parts.append(f"Confidence: {row['confidence']:.1%}")
-                                if 'is_mixed' in row and row['is_mixed']:
-                                    meta_parts.append("Mixed Sentiment")
-                                
-                                if meta_parts:
-                                    pdf.set_x(pdf.l_margin)
-                                    pdf.set_font("times", "I", 9)
-                                    meta_text = " | ".join(meta_parts)
-                                    safe_meta = meta_text.encode('latin-1', 'replace').decode('latin-1')
-                                    pdf.multi_cell(0, 4, safe_meta)
-                                
-                                pdf.ln(3)  
-
-                    pdf_output = pdf.output()
-
-                    st.success("Report Complete")
-                    st.download_button(
-                        label="Download PDF Report",
-                        data=bytes(pdf_output),
-                        file_name=f"{report_title.replace(' ', '_')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-
-def render_spike_detection(df):
-    """Detect months where negative reviews spiked above 1.5 std devs from average."""
-    import numpy as np
-    import plotly.graph_objects as go
-
-    if "date" not in df.columns:
-        st.info("No date column found — spike detection requires a date column.")
-        return
-    try:
-        d = df.copy()
-        d["date"] = pd.to_datetime(d["date"], errors="coerce")
-        d = d[d["date"].notna()]
-        if d.empty:
-            st.info("No valid dates found in dataset.")
-            return
-
-        neg_df  = d[d["predicted_sentiment"] == "negative"]
-        monthly = neg_df.groupby(pd.Grouper(key="date", freq="ME")).size().reset_index(name="count")
-
-        if len(monthly) < 3:
-            st.info("Need at least 3 months of data to detect spikes.")
-            return
-
-        mean      = monthly["count"].mean()
-        std       = monthly["count"].std()
-        threshold = mean + 1.5 * std
-        spikes    = monthly[monthly["count"] > threshold].sort_values("count", ascending=False)
-
-        bar_colors = ["#4a6fa5" if c > threshold else "#8a8a8a" for c in monthly["count"]]
-
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=monthly["date"],
-            y=monthly["count"],
-            marker_color=bar_colors,
-            hovertemplate="<b>%{x|%b %Y}</b><br>Negative reviews: %{y}<extra></extra>",
-            name="Monthly negatives",
-        ))
-        fig.add_hline(
-            y=threshold, line_dash="dash", line_color="#4a6fa5",
-            annotation_text=f"<b>Spike threshold ({threshold:.0f})</b>",
-            annotation_position="top right",
-            annotation_font=dict(size=14, color="#4a6fa5"),
-        )
-        fig.add_hline(
-            y=mean, line_dash="dot", line_color="#8a8a8a",
-            annotation_text=f"<b>Average ({mean:.0f})</b>",
-            annotation_position="bottom right",
-            annotation_font=dict(size=14, color="#8a8a8a"),
-        )
-        fig.update_layout(
-            height=420,
-            margin=dict(t=40, b=40, l=20, r=20),
-            xaxis=dict(
-                title=dict(text="<b>Month</b>", font=dict(size=16)),
-                tickfont=dict(size=14),
-            ),
-            yaxis=dict(
-                title=dict(text="<b>Negative Review Count</b>", font=dict(size=16)),
-                tickfont=dict(size=14),
-                rangemode="tozero",
-            ),
-            showlegend=False,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-        if not spikes.empty:
-            st.markdown("**Detected Spikes:**")
-            for _, row in spikes.head(5).iterrows():
-                pct_above = (row["count"] - mean) / mean * 100 if mean > 0 else 0
-                st.warning(
-                    f"**{row['date'].strftime('%B %Y')}** — "
-                    f"{int(row['count'])} negative reviews "
-                    f"({pct_above:+.0f}% above average of {mean:.0f})"
-                )
-        else:
-            st.success("No significant spikes detected. Negative review volume is stable.")
-
-    except Exception as e:
-        st.warning(f"Could not run spike detection: {e}")
-
-
-def render_theme_heatmap(df_exploded):
-    """Render a theme × sentiment heatmap using a blue-scale palette."""
-    import plotly.graph_objects as go
-
-    def _normalize(s):
-        if isinstance(s, str) and s.lower() in ("neutral/mixed", "neutral"):
-            return "neutral"
-        return s
-
-    pivot = pd.crosstab(
-        df_exploded["Theme"],
-        df_exploded["predicted_sentiment"].apply(_normalize),
-        normalize="index",
-    ) * 100
-
-    for col in ["positive", "neutral", "negative"]:
-        if col not in pivot.columns:
-            pivot[col] = 0
-    pivot = pivot[["positive", "neutral", "negative"]]
-
-    fig = go.Figure(data=go.Heatmap(
-        z=pivot.values,
-        x=["<b>Positive</b>", "<b>Neutral</b>", "<b>Negative</b>"],
-        y=pivot.index,
-        colorscale=[[0, "#FFFFFF"], [0.5, "#93C5FD"], [1, "#1e3a5f"]],
-        text=pivot.values.round(1),
-        texttemplate="<b>%{text}%</b>",
-        textfont=dict(size=14, color="black"),
-        hovertemplate="<b>%{y}</b><br>%{x}: %{z:.1f}%<extra></extra>",
-        colorbar=dict(
-            title=dict(text="<b>% of reviews</b>", font=dict(size=14)),
-            tickfont=dict(size=13),
-        ),
-    ))
-    fig.update_layout(
-        height=420,
-        margin=dict(t=20, b=20, l=20, r=20),
-        xaxis=dict(
-            tickfont=dict(size=15),
-            title="",
-        ),
-        yaxis=dict(
-            tickfont=dict(size=14),
-            title="",
-        ),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    st.caption("Darker blue cells = higher concentration of that sentiment for that theme.")
-
-
-def render_about_page():
-    """Render the About & Methodology page extracted from run_full_pipeline.py."""
-    st.subheader("About & Methodology")
-
-    st.markdown(
-        '<div style="background:#f0f4ff; border-left:4px solid #1e3a5f; '
-        'padding:18px 22px; border-radius:8px; margin-bottom:16px;">'
-        '<p style="font-size:17px; font-weight:700; color:#1e3a5f; margin:0 0 6px 0;">'
-        'Project By Group 5</p>'
-        '<p style="font-size:15px; color:#374151; margin:0 0 10px 0;">'
-        'Christian East &nbsp;·&nbsp; Birajman Tamang &nbsp;·&nbsp; Kelsang Yonjan</p>'
-        '<p style="font-size:14px; color:#6b7280; margin:0 0 4px 0;">'
-        '<strong>CSCI 491</strong></p>'
-        '<p style="font-size:14px; color:#6b7280; margin:0;">'
-        'Special thanks to <strong>Dr. Jennifer Lavergne</strong> and '
-        '<strong>Dr. Lasang Tamang</strong></p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("---")
-    st.markdown("### What This Platform Does")
-    st.markdown(
-        """
-        The Customer Feedback Intelligence Platform analyses customer reviews using two AI systems:
-
-        - **Sentiment Classification** — predicts whether a review is positive, negative, or neutral
-        - **Theme Extraction** — identifies which business topics each review is about
-        """
-    )
-
-    st.markdown("---")
-    st.markdown("### Sentiment Model")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Algorithm:** Logistic Regression")
-        st.markdown("**Vectorizer:** TF-IDF (5,000 features, 1–2 word phrases)")
-        st.markdown("**Training split:** 80% train / 20% test")
-    with col2:
-        st.markdown("**Classes:** Positive · Negative · Neutral/Mixed")
-        st.markdown("**Mixed-signal detection:** contrast words + dual polarity vocabulary")
-        st.markdown("**Confidence score:** model's probability for its predicted class")
-
-    st.markdown(
-        """
-        **Confidence score guide:**
-        | Score | Meaning |
-        |---|---|
-        | 90–100% | Very certain |
-        | 70–89% | Confident |
-        | 60–69% | Moderate |
-        | Below 60% | Low — review manually |
-        """
-    )
-
-    st.markdown("---")
-    st.markdown("### Theme Extraction")
-    st.markdown(
-        """
-        Reviews are sent in batches to a locally-running LLM (Gemma 2 9B via Ollama).
-        The model assigns 1–3 themes per review from the approved list only — any invented
-        themes are rejected and retried up to 5 times.
-
-        **The 8 themes:**
-        """
-    )
-    theme_descriptions = {
-        "Product Quality":      "Food, drink, or item quality and standards",
-        "Product Availability": "Out of stock items or limited menu",
-        "Customer Service":     "Staff attitude, helpfulness, complaint handling",
-        "Speed of Service":     "Wait times, queue length, order delays",
-        "Store Environment":    "Cleanliness, atmosphere, seating, parking",
-        "Price and Value":      "Cost, affordability, value for money",
-        "Digital and Rewards":  "App, online ordering, loyalty points",
-        "Policies and Safety":  "Return policies, hygiene, health precautions",
-    }
-    for theme, desc in theme_descriptions.items():
-        st.markdown(
-            f'<div style="background:#f8f9fa; border-left:3px solid #1e3a5f; '
-            f'padding:8px 14px; border-radius:4px; margin-bottom:5px;">'
-            f'<strong style="color:#1e3a5f;">{theme}</strong> — '
-            f'<span style="color:#374151; font-size:14px;">{desc}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("---")
-    st.markdown("### Technology Stack")
-    tc1, tc2, tc3 = st.columns(3)
-    with tc1:
-        st.markdown("**ML**\nscikit-learn · Logistic Regression · TF-IDF")
-    with tc2:
-        st.markdown("**LLM**\nOllama · Gemma 2 9B")
-    with tc3:
-        st.markdown("**Dashboard**\nStreamlit · Plotly · fpdf2 · pandas")
-
-    st.markdown("---")
-    st.caption("Customer Feedback Intelligence Platform — CSCI 491 · Group 5")
+                    st.warning("Themes required to deep dive.")
