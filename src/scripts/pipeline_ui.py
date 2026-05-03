@@ -1101,14 +1101,16 @@ def render_theme_heatmap(df_exploded):
     fig.update_layout(
         height=450,
         title=dict(text="<b>Theme × Sentiment Heatmap</b>", font=dict(size=14, color="#000000")),
-        margin=dict(t=60, b=20, l=20, r=20),
+        margin=dict(t=60, b=20, l=160, r=20),
         xaxis=dict(
-            tickfont=dict(size=40, color="#000000"),
+            tickfont=dict(size=16, color="#000000"),
             title="",
+            side="bottom",
         ),
         yaxis=dict(
-            tickfont=dict(size=40, color="#000000"),
+            tickfont=dict(size=16, color="#000000"),
             title="",
+            automargin=True,
         ),
     )
     st.plotly_chart(_apply_font(fig), use_container_width=True)
