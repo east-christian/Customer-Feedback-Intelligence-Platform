@@ -380,12 +380,11 @@ def render_dashboard(df, THEMES):
                     with col1:
                         st.dataframe(theme_summary, use_container_width=True)
                     with col2:
-                        # Colorblind-friendly palette (IBM): no yellow, no red
+                        # Colorblind-friendly palette (Wong 2011): no red, yellow, pink, orange
                         CB_PALETTE = [
-                            "#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000",
-                            "#009E73", "#56B4E9", "#0072B2", "#CC79A7", "#D55E00",
+                            "#0072B2", "#56B4E9", "#009E73", "#648FFF",
+                            "#785EF0", "#029E73", "#4C72B0", "#64B5F6",
                         ]
-                        bar_colors = [CB_PALETTE[i % len(CB_PALETTE)] for i in range(len(theme_summary))]
                         fig = px.bar(
                             theme_summary,
                             x="Count",
@@ -468,10 +467,15 @@ def render_dashboard(df, THEMES):
                             .reset_index(name="count")
                         )
                     
+                        CB_PALETTE = [
+                            "#0072B2", "#56B4E9", "#009E73", "#648FFF",
+                            "#785EF0", "#029E73", "#4C72B0", "#64B5F6",
+                        ]
                         fig_trend = px.line(
                             trend_df, x="date", y="count", color="Theme",
                             title="Theme Volume Over Time",
-                            markers=True
+                            markers=True,
+                            color_discrete_sequence=CB_PALETTE,
                         )
                         st.plotly_chart(_apply_font(fig_trend), use_container_width=True)
                         charts_for_report["Time-Oriented Trends"] = fig_trend
@@ -1055,18 +1059,25 @@ def render_theme_heatmap(df_exploded):
             return "neutral"
         return s
 
-    # Normalize BEFORE crosstab to avoid duplicate column labels
-    df_heatmap = df_exploded.copy()
+    # Normalize sentiment and build pivot manually to avoid duplicate label errors
+    df_heatmap = df_exploded[["Theme", "predicted_sentiment"]].copy()
     df_heatmap["sentiment_norm"] = df_heatmap["predicted_sentiment"].apply(_normalize)
 
-    pivot = pd.crosstab(
-        df_heatmap["Theme"],
-        df_heatmap["sentiment_norm"],
-        normalize="index",
-    ) * 100
+    # Count occurrences per theme+sentiment, then compute row percentages manually
+    counts = (
+        df_heatmap.groupby(["Theme", "sentiment_norm"], as_index=False)
+        .size()
+        .rename(columns={"size": "count"})
+    )
+    totals = counts.groupby("Theme")["count"].transform("sum")
+    counts["pct"] = counts["count"] / totals * 100
 
-    # Remove any remaining duplicate columns (safety net)
-    pivot = pivot.loc[:, ~pivot.columns.duplicated()]
+    # Pivot to wide format — this avoids crosstab duplicate label issues entirely
+    pivot = counts.pivot_table(
+        index="Theme", columns="sentiment_norm", values="pct", aggfunc="sum", fill_value=0
+    )
+    pivot.columns.name = None
+    pivot.index.name = None
 
     for col in ["positive", "neutral", "negative"]:
         if col not in pivot.columns:
