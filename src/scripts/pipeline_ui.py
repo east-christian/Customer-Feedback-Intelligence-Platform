@@ -958,8 +958,8 @@ def _apply_font(fig):
         title_font=dict(size=30, color="#000000"),
         legend=dict(font=dict(size=30, color="#000000")),
     )
-    fig.update_xaxes(tickfont=dict(size=40, color="#000000"), title_font=dict(size=30, color="#000000"))
-    fig.update_yaxes(tickfont=dict(size=40, color="#000000"), title_font=dict(size=30, color="#000000"))
+    fig.update_xaxes(tickfont=dict(size=14, color="#000000"), title_font=dict(size=30, color="#000000"))
+    fig.update_yaxes(tickfont=dict(size=14, color="#000000"), title_font=dict(size=30, color="#000000"))
     return fig
 
 
@@ -1019,11 +1019,11 @@ def render_spike_detection(df):
             margin=dict(t=60, b=80, l=160, r=40),
             xaxis=dict(
                 title=dict(text="Month", font=dict(size=14, color="#000000")),
-                tickfont=dict(size=40, color="#000000"),
+                tickfont=dict(size=14, color="#000000"),
             ),
             yaxis=dict(
                 title=dict(text="Negative Review Count", font=dict(size=14, color="#000000")),
-                tickfont=dict(size=40, color="#000000"),
+                tickfont=dict(size=14, color="#000000"),
                 rangemode="tozero",
             ),
             showlegend=False,
@@ -1095,13 +1095,13 @@ def render_theme_heatmap(df_exploded):
         hovertemplate="<b>%{y}</b><br>%{x}: %{z:.1f}%<extra></extra>",
         colorbar=dict(
             title=dict(text="<b>% of reviews</b>", font=dict(size=14, color="#000000")),
-            tickfont=dict(size=40, color="#000000"),
+            tickfont=dict(size=14, color="#000000"),
         ),
     ))
     fig.update_layout(
         height=450,
         title=dict(text="<b>Theme × Sentiment Heatmap</b>", font=dict(size=14, color="#000000")),
-        margin=dict(t=60, b=20, l=220, r=20),
+        margin=dict(t=60, b=20, l=20, r=20),
         xaxis=dict(
             tickfont=dict(size=16, color="#000000"),
             title="",
