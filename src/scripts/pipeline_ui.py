@@ -324,7 +324,7 @@ def render_dashboard(df, THEMES):
                         y="predicted_sentiment",
                         color="predicted_sentiment",
                         title="Prediction Intensity and Uncertainty",
-                        labels={"confidence": "Model Confidence Score", "predicted_sentiment": "Sentiment"},
+                        labels={"confidence": "Model Confidence Score", "predicted_sentiment": ""},
                         color_discrete_map={"positive": "#5a9e6f", "neutral": "#8a8a8a", "neutral/mixed": "#8a8a8a", "negative": "#4a6fa5"}
                     )
                     st.plotly_chart(_apply_font(fig_box), use_container_width=True)
@@ -395,7 +395,7 @@ def render_dashboard(df, THEMES):
                             color_discrete_sequence=CB_PALETTE,
                         )
                         fig.update_traces(showlegend=False)
-                        fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                        fig.update_layout(height=400, yaxis={"categoryorder":"total ascending", "title": ""}, margin=dict(t=40, b=40, l=180, r=20))
                         st.plotly_chart(_apply_font(fig), use_container_width=True)
                         charts_for_report["Top Extracted Themes"] = fig
                 else:
@@ -1008,21 +1008,21 @@ def render_spike_detection(df):
             annotation_font=dict(size=13, color="#4a6fa5"),
         )
         fig.add_hline(
-            y=mean, line_dash="dot", line_color="#8a8a8a",
+            y=mean, line_dash="dot", line_color="black",
             annotation_text=f"<b>Average ({mean:.0f})</b>",
             annotation_position="bottom right",
-            annotation_font=dict(size=13, color="#8a8a8a"),
+            annotation_font=dict(size=13, color="black"),
         )
         fig.update_layout(
             height=450,
             title=dict(text="<b>Monthly Negative Review Volume</b>", font=dict(size=24, color="#000000")),
-            margin=dict(t=60, b=80, l=160, r=40),
+            margin=dict(t=60, b=80, l=180, r=40),
             xaxis=dict(
                 title=dict(text="Month", font=dict(size=14, color="#000000")),
                 tickfont=dict(size=14, color="#000000"),
             ),
             yaxis=dict(
-                title=dict(text="Negative Review Count", font=dict(size=14, color="#000000")),
+                title=dict(text="Count", font=dict(size=14, color="#000000")),
                 tickfont=dict(size=14, color="#000000"),
                 rangemode="tozero",
             ),
@@ -1101,7 +1101,7 @@ def render_theme_heatmap(df_exploded):
     fig.update_layout(
         height=450,
         title=dict(text="<b>Theme × Sentiment Heatmap</b>", font=dict(size=14, color="#000000")),
-        margin=dict(t=60, b=20, l=20, r=20),
+        margin=dict(t=60, b=20, l=160, r=20),
         xaxis=dict(
             tickfont=dict(size=16, color="#000000"),
             title="",
