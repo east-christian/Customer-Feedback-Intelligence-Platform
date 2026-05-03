@@ -380,15 +380,22 @@ def render_dashboard(df, THEMES):
                     with col1:
                         st.dataframe(theme_summary, use_container_width=True)
                     with col2:
+                        # Colorblind-friendly palette (IBM): no yellow, no red
+                        CB_PALETTE = [
+                            "#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000",
+                            "#009E73", "#56B4E9", "#0072B2", "#CC79A7", "#D55E00",
+                        ]
+                        bar_colors = [CB_PALETTE[i % len(CB_PALETTE)] for i in range(len(theme_summary))]
                         fig = px.bar(
                             theme_summary,
                             x="Count",
                             y="Theme",
                             orientation='h',
                             title="Most Common Review Themes",
-                            color="Count",
-                            color_continuous_scale="Viridis"
+                            color="Theme",
+                            color_discrete_sequence=CB_PALETTE,
                         )
+                        fig.update_traces(showlegend=False)
                         fig.update_layout(yaxis={'categoryorder':'total ascending'})
                         st.plotly_chart(_apply_font(fig), use_container_width=True)
                         charts_for_report["Top Extracted Themes"] = fig
@@ -660,7 +667,10 @@ def render_dashboard(df, THEMES):
                 st.subheader("Theme × Sentiment Heatmap")
                 st.caption("Visual breakdown of how each theme is perceived across sentiment classes.")
                 if has_themes and df_exploded is not None and not df_exploded.empty:
-                    render_theme_heatmap(df_exploded)
+                    try:
+                        render_theme_heatmap(df_exploded)
+                    except Exception as e:
+                        st.markdown(f'<div style="background:#dbeafe; border-left:4px solid #1e3a5f; padding:10px 16px; border-radius:6px; color:#1e3a5f;">Could not render heatmap: {e}</div>', unsafe_allow_html=True)
                 else:
                     st.markdown('<div style="background:#dbeafe; border-left:4px solid #1e3a5f; padding:10px 16px; border-radius:6px; color:#1e3a5f;">Theme extraction required for heatmap.</div>', unsafe_allow_html=True)
 
@@ -1045,11 +1055,18 @@ def render_theme_heatmap(df_exploded):
             return "neutral"
         return s
 
+    # Normalize BEFORE crosstab to avoid duplicate column labels
+    df_heatmap = df_exploded.copy()
+    df_heatmap["sentiment_norm"] = df_heatmap["predicted_sentiment"].apply(_normalize)
+
     pivot = pd.crosstab(
-        df_exploded["Theme"],
-        df_exploded["predicted_sentiment"].apply(_normalize),
+        df_heatmap["Theme"],
+        df_heatmap["sentiment_norm"],
         normalize="index",
     ) * 100
+
+    # Remove any remaining duplicate columns (safety net)
+    pivot = pivot.loc[:, ~pivot.columns.duplicated()]
 
     for col in ["positive", "neutral", "negative"]:
         if col not in pivot.columns:
