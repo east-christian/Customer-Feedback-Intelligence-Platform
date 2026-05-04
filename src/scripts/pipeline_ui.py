@@ -81,6 +81,10 @@ def render_dashboard(df, THEMES):
             font-size: 24px !important;
             font-weight: 700 !important;
         }
+        /* Multiselect tags */
+        span[data-baseweb="tag"] {
+            background-color: #0072B2 !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
