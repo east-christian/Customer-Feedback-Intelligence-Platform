@@ -85,6 +85,10 @@ def render_dashboard(df, THEMES):
         span[data-baseweb="tag"] {
             background-color: #0072B2 !important;
         }
+        /* Multiselect tags */
+        span[data-baseweb="tag"] {
+            background-color: #0072B2 !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
